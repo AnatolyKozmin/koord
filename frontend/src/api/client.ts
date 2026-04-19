@@ -1,4 +1,13 @@
-const base = import.meta.env.VITE_API_URL || "http://localhost:8011";
+/** Пустая база = запросы на тот же origin (Vite в dev проксирует /api → backend). Иначе полный URL из VITE_API_URL. */
+function apiBase(): string {
+  const url = import.meta.env.VITE_API_URL;
+  if (url != null && String(url).trim() !== "") {
+    return String(url).replace(/\/$/, "");
+  }
+  return "";
+}
+
+const base = apiBase();
 
 export function getToken(): string | null {
   return sessionStorage.getItem("token");
