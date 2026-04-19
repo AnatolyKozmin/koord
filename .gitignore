@@ -1,0 +1,9 @@
+.env
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/secrets/*.json
+!backend/secrets/.gitkeep
+backend/data/*.db

@@ -1,0 +1,14 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+pydantic-settings==2.7.0
+redis==5.2.1
+rq==2.1.0
+httpx==0.28.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+# passlib 1.7.4 не дружит с bcrypt 4.1+ (удалён __about__); иначе падает старт приложения
+bcrypt==4.0.1
+google-api-python-client==2.159.0
+google-auth==2.37.0
+email-validator==2.2.0
