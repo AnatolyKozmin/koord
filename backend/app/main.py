@@ -35,6 +35,25 @@ app.include_router(sheets.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 
 
+@app.get("/")
+def root() -> dict:
+    """Корень API: веб-интерфейс отдаётся отдельным сервисом (см. docker-compose, порт фронта)."""
+    return {
+        "service": "Koord Verification API",
+        "health": "/health",
+        "docs": "/docs",
+        "api": "/api",
+        "note": "Веб-интерфейс (логин и страницы) — отдельный порт, в compose обычно 8010 → не этот URL.",
+    }
+
+
+@app.get("/login")
+def login_hint() -> dict:
+    return {
+        "detail": "Это адрес API. Страница входа — во фронтенде (откройте порт веб-приложения, например :8010, не :8011).",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
