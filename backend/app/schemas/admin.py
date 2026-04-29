@@ -1,17 +1,37 @@
-from typing import Literal
+import re
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Принимаем любой email вида user@domain.tld, включая .local и другие внутренние домены
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$|^[^@\s]+@[^@\s]+$")
+
+
+def _norm_email(v: str) -> str:
+    v = v.strip().lower()
+    if not v or "@" not in v:
+        raise ValueError("Некорректный email")
+    return v
+
+
+AnyEmail = Annotated[str, Field(min_length=3)]
 
 
 class UserCreateRequest(BaseModel):
-    email: EmailStr
+    email: AnyEmail
     password: str = Field(min_length=4)
     role: Literal["user", "super_admin"] = "user"
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalise_email(cls, v: str) -> str:
+        return _norm_email(v)
 
 
 class UserOutAdmin(BaseModel):
     email: str
     role: str
+    master_label: str | None = None
 
 
 class AssignmentPutRequest(BaseModel):
@@ -23,8 +43,38 @@ class AssignmentPutRequest(BaseModel):
 class DistributeRequest(BaseModel):
     sheet_name: str = Field(description="Анкеты | Домашки | Enquiries | Собеседования")
     per_user: int = Field(ge=1, le=5000)
-    user_emails: list[EmailStr]
+    user_emails: list[AnyEmail]
     by_columns: bool = Field(
         default=False,
         description="Для листа «Собеседования»: распределять колонки кандидатов (D…), а не строки.",
     )
+
+    @field_validator("user_emails", mode="before")
+    @classmethod
+    def normalise_emails(cls, v: list) -> list:
+        return [_norm_email(str(e)) for e in v]
+
+
+class SetPasswordRequest(BaseModel):
+    password: str = Field(min_length=4)
+
+
+class DistributeCustomRequest(BaseModel):
+    sheet_name: str = Field(description="Анкеты | Домашки | Enquiries | Собеседования")
+    user_counts: dict[str, int] = Field(
+        description="Словарь {email: количество_строк} для каждого проверяющего.",
+    )
+    by_columns: bool = Field(default=False)
+
+
+class AssignRowRequest(BaseModel):
+    sheet_name: str
+    row_index: int
+    email: str | None = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalise_email(cls, v: str | None) -> str | None:
+        if not v:
+            return None
+        return _norm_email(v)

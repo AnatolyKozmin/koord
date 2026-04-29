@@ -54,7 +54,7 @@ export const api = {
       method: "POST",
       json: { email, password },
     }),
-  me: () => request<{ email: string; role: string }>("/api/auth/me"),
+  me: () => request<{ email: string; role: string; master_label: string | null }>("/api/auth/me"),
   syncSheets: () =>
     request<{ ok: boolean; sheets: string[]; rows: Record<string, number> }>("/api/sheets/sync", {
       method: "POST",
@@ -105,9 +105,9 @@ export const api = {
       result?: unknown;
       error?: string | null;
     }>(`/api/sheets/queue/status/${encodeURIComponent(jobId)}`),
-  adminUsers: () => request<{ email: string; role: string }[]>("/api/admin/users"),
+  adminUsers: () => request<{ email: string; role: string; master_label: string | null }[]>("/api/admin/users"),
   adminCreateUser: (email: string, password: string, role: "user" | "super_admin" = "user") =>
-    request<{ email: string; role: string }>("/api/admin/users", {
+    request<{ email: string; role: string; master_label: string | null }>("/api/admin/users", {
       method: "POST",
       json: { email, password, role },
     }),
@@ -117,10 +117,38 @@ export const api = {
       method: "POST",
       json: { sheet_name, per_user, user_emails, by_columns: !!by_columns },
     }),
+  adminDistributeCustom: (sheet_name: string, user_counts: Record<string, number>, by_columns?: boolean) =>
+    request<{ ok: boolean; assigned_rows: Record<string, number[]> }>("/api/admin/assignments/distribute-custom", {
+      method: "POST",
+      json: { sheet_name, user_counts, by_columns: !!by_columns },
+    }),
+  adminSheetRows: (sheet_name: string) =>
+    request<{
+      sheet: string;
+      header: string[];
+      rows: { index: number; preview: string[]; reviewer: string | null }[];
+    }>(`/api/admin/sheet-rows/${encodeURIComponent(sheet_name)}`),
+  adminAssignRow: (sheet_name: string, row_index: number, email: string | null) =>
+    request<{ ok: boolean }>("/api/admin/assignments/assign-row", {
+      method: "POST",
+      json: { sheet_name, row_index, email },
+    }),
+  adminSetPassword: (email: string, password: string) =>
+    request<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(email)}/password`, {
+      method: "PATCH",
+      json: { password },
+    }),
+  adminClearAssignment: (email: string) =>
+    request<{ ok: boolean }>(`/api/admin/assignments/${encodeURIComponent(email)}`, { method: "DELETE" }),
+  adminPutAssignment: (email: string, rows_by_sheet: Record<string, number[]>) =>
+    request<{ ok: boolean }>(`/api/admin/assignments/${encodeURIComponent(email)}`, {
+      method: "PUT",
+      json: { rows_by_sheet },
+    }),
   anketyColumnLayout: () =>
     request<{
       sheet: string;
-      score_column_indices: { index: number; header: string | null }[];
+      score_column_indices: { index: number; header: string | null; options: string[] }[];
       sum_column: { index: number | null; header: string | null };
       level_column: { index: number | null; header: string | null };
       reviewer_questions_column: { index: number | null; header: string | null };

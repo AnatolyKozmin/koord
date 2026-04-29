@@ -52,6 +52,10 @@ onMounted(async () => {
 
 <template>
   <div>
+    <div class="subs-hero">
+      <img src="/brand/kg.svg" alt="КГ" class="subs-hero-img" />
+      <p class="subs-hero-caption">КГ И ЛЮБИМЫЙ СТП</p>
+    </div>
     <h1>Сабы</h1>
     <p class="muted">
       Лист «{{ sheetName }}» — для всех пользователей целиком (без разбивки по проверяющим). Имя вкладки в Google
@@ -90,3 +94,34 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.subs-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.subs-hero-img {
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  border-radius: 16px;
+}
+
+.subs-hero-caption {
+  font-family: var(--font-heading);
+  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-align: center;
+}
+</style>

@@ -1,41 +1,71 @@
+/* =========================================================
+   KOORDINATORSTVO '26 — Design System
+   Brand palette from Figma brand book
+   ========================================================= */
+
 :root {
-  --bg: #0f1219;
-  --surface: #171c28;
-  --border: #2a3142;
-  --text: #e8ecf4;
-  --muted: #8b95a8;
-  --accent: #6c9cff;
-  --accent-dim: #3d5a8a;
-  --radius: 12px;
-  font-family: "DM Sans", system-ui, sans-serif;
-  color: var(--text);
-  background: var(--bg);
-  line-height: 1.5;
+  /* === Brand Palette === */
+  --c-bg:           #150C1C;   /* фон — почти чёрный, глубокий фиолетово-чёрный */
+  --c-bg-2:         #1e1229;   /* чуть светлее, для карточек */
+  --c-bg-3:         #271636;   /* поверхности второго уровня */
+  --c-purple-deep:  #441766;   /* тёмный фиолетовый */
+  --c-purple:       #5612BE;   /* фиолетовый */
+  --c-purple-mid:   #A486EC;   /* средний лавандовый */
+  --c-purple-light: #B1AAFF;   /* светлый перивинкл */
+  --c-lavender:     #DFABFF;   /* лаванда */
+  --c-pink:         #FF87AB;   /* розовый акцент */
+  --c-orange:       #F58414;   /* оранжевый акцент */
+  --c-yellow:       #FCCF50;   /* золотисто-жёлтый акцент */
+  --c-white:        #F3F2F2;   /* почти белый, основной текст */
+  --c-border:       rgba(164, 134, 236, 0.18); /* лаванда с прозрачностью */
+  --c-border-bright: rgba(177, 170, 255, 0.35);
+
+  /* === Gradient shortcuts === */
+  --grad-accent: linear-gradient(135deg, #FCCF50, #FF87AB);
+  --grad-purple: linear-gradient(135deg, #5612BE, #A486EC);
+  --grad-dark:   linear-gradient(180deg, #1e1229 0%, #150C1C 100%);
+
+  /* === Typography === */
+  /* Заголовочный — "Geniral font" (custom, используй как @font-face если есть файл) */
+  --font-heading: "Geniral font", "Inter", sans-serif;
+  /* Основной — Akrobat (загружен с Fontshare) */
+  --font-body: "Akrobat", "Inter", system-ui, sans-serif;
+
+  /* === Spacing & Shape === */
+  --radius:    14px;
+  --radius-sm: 8px;
+
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--c-white);
+  background: var(--c-bg);
+  line-height: 1.55;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--c-bg);
 }
 
 a {
-  color: var(--accent);
+  color: var(--c-purple-light);
   text-decoration: none;
 }
+a:hover { text-decoration: underline; }
 
-a:hover {
-  text-decoration: underline;
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+  margin-top: 0;
+  color: var(--c-white);
 }
 
-button {
-  font: inherit;
-  cursor: pointer;
-}
-
+/* =========================================================
+   Layout
+   ========================================================= */
 .layout {
   min-height: 100vh;
   display: flex;
@@ -45,98 +75,172 @@ button {
 .top-nav {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid var(--border);
-  background: rgba(23, 28, 40, 0.92);
-  backdrop-filter: blur(8px);
+  gap: 0.25rem;
+  padding: 0.6rem 1.25rem;
+  background: rgba(21, 12, 28, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--c-border);
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
 .top-nav a {
-  padding: 0.4rem 0.75rem;
-  border-radius: 8px;
-  color: var(--muted);
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-sm);
+  color: rgba(243, 242, 242, 0.6);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: color 0.15s, background 0.15s;
+}
+
+.top-nav a:hover {
+  color: var(--c-white);
+  background: rgba(164, 134, 236, 0.1);
   text-decoration: none;
 }
 
 .top-nav a.router-link-active {
-  color: var(--text);
-  background: var(--surface);
+  color: var(--c-lavender);
+  background: rgba(86, 18, 190, 0.22);
 }
 
-.top-nav .spacer {
-  flex: 1;
+.top-nav .spacer { flex: 1; }
+
+.top-nav .nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: 0.75rem;
+  text-decoration: none;
+}
+.top-nav .nav-logo img {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+}
+.top-nav .nav-logo-name {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .main {
   flex: 1;
-  padding: 1rem clamp(0.75rem, 2vw, 1.75rem) 2rem;
+  padding: 1.25rem clamp(0.75rem, 2.5vw, 2rem) 2.5rem;
   width: 100%;
-  max-width: min(1680px, 96vw);
+  max-width: min(1720px, 97vw);
   margin: 0 auto;
 }
 
+/* =========================================================
+   Cards
+   ========================================================= */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--c-bg-2);
+  border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  padding: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  position: relative;
+  overflow: hidden;
 }
 
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(86, 18, 190, 0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* =========================================================
+   Tables
+   ========================================================= */
 .table-wrap {
   overflow: auto;
   max-height: 60vh;
+  border-radius: var(--radius-sm);
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  font-family: var(--font-body);
 }
 
-th,
-td {
-  border: 1px solid var(--border);
-  padding: 0.35rem 0.5rem;
+th, td {
+  border: 1px solid var(--c-border);
+  padding: 0.4rem 0.6rem;
   text-align: left;
 }
 
 th {
-  background: #1e2433;
+  background: var(--c-bg-3);
+  color: var(--c-lavender);
+  font-weight: 600;
   position: sticky;
   top: 0;
+  z-index: 2;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.muted {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
+tr:hover td { background: rgba(164, 134, 236, 0.05); }
+
+/* =========================================================
+   Buttons
+   ========================================================= */
+button { font: inherit; cursor: pointer; }
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, #2a3348, #222a3d);
-  color: var(--text);
+  padding: 0.5rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-border-bright);
+  background: rgba(164, 134, 236, 0.1);
+  color: var(--c-white);
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn:hover {
+  background: rgba(164, 134, 236, 0.2);
+  border-color: var(--c-purple-mid);
 }
 
 .btn-primary {
-  border-color: var(--accent-dim);
-  background: linear-gradient(180deg, #4a6fb8, #3d5a8a);
+  background: linear-gradient(135deg, #5612BE, #A486EC);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #6a1de0, #b99cf6);
+  border-color: transparent;
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* =========================================================
+   Form fields
+   ========================================================= */
 .field {
   display: flex;
   flex-direction: column;
@@ -145,14 +249,52 @@ th {
 }
 
 .field label {
-  font-size: 0.85rem;
-  color: var(--muted);
+  font-size: 0.82rem;
+  color: var(--c-lavender);
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
-.field input {
-  padding: 0.5rem 0.65rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: #121620;
-  color: var(--text);
+.field input,
+.field select,
+.field textarea {
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-border-bright);
+  background: rgba(21, 12, 28, 0.8);
+  color: var(--c-white);
+  font: inherit;
+  transition: border-color 0.15s;
 }
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--c-purple-mid);
+  box-shadow: 0 0 0 3px rgba(164, 134, 236, 0.18);
+}
+
+/* =========================================================
+   Utility
+   ========================================================= */
+.muted {
+  color: rgba(243, 242, 242, 0.45);
+  font-size: 0.875rem;
+}
+
+.accent-text {
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.msg-error { color: var(--c-pink); }
+.msg-ok    { color: #7ee8a2; }
+
+/* =========================================================
+   Score cells (used in table views)
+   ========================================================= */
+.cell-ok   { background: rgba(46, 200, 67, 0.1); }
+.cell-warn { background: rgba(255, 135, 171, 0.15); }

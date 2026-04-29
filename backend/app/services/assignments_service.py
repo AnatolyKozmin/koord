@@ -79,6 +79,88 @@ def list_all_assignments() -> dict[str, dict[str, list[int]]]:
         return out
 
 
+def assign_row_to_user(sheet_name: str, row_index: int, email: str | None) -> None:
+    """
+    Назначает конкретную строку/колонку конкретному пользователю.
+    Если email=None — снимает назначение со всех.
+    Перед назначением убирает эту строку у всех прочих пользователей.
+    """
+    axis = _axis_for_sheet(sheet_name)
+    with SessionLocal() as session:
+        session.execute(
+            delete(Assignment).where(
+                Assignment.sheet_name == sheet_name,
+                Assignment.item_index == row_index,
+                Assignment.axis == axis,
+            ),
+        )
+        if email:
+            em = email.lower()
+            uid = session.scalar(select(User.id).where(User.email == em))
+            if uid is not None:
+                session.add(
+                    Assignment(user_id=uid, sheet_name=sheet_name, item_index=row_index, axis=axis),
+                )
+        session.commit()
+
+
+def row_to_reviewer_map(sheet_name: str) -> dict[int, str]:
+    """Возвращает {row_index: email} по всем назначениям листа."""
+    with SessionLocal() as session:
+        rows = session.execute(
+            select(User.email, Assignment.item_index).join(Assignment, Assignment.user_id == User.id).where(
+                Assignment.sheet_name == sheet_name,
+            ),
+        ).all()
+    return {int(item_index): email for email, item_index in rows}
+
+
+def distribute_sheet_custom(
+    sheet_name: str,
+    user_counts: dict[str, int],
+    *,
+    by_columns: bool = False,
+) -> dict[str, list[int]]:
+    """Раздаёт строки/колонки листа каждому пользователю в указанном количестве.
+    user_counts: {email: count}. Строки выбираются последовательно из пула, не пересекаясь.
+    """
+    from app.services import sheets_service
+    from app.services.interviews_layout import sheet_max_column_index
+
+    if sheet_name not in assignable_sheet_names():
+        raise ValueError(f"Лист не участвует в назначениях: {sheet_name}")
+
+    rows = sheets_service.read_sheet_cached(sheet_name)
+    if not rows:
+        raise ValueError("Нет данных в кэше — выполните синхронизацию таблицы")
+
+    settings = get_settings()
+    if by_columns:
+        if sheet_name != settings.sheet_name_interviews:
+            raise ValueError("Режим by_columns допустим только для листа «Собеседования»")
+        fc = settings.sheet_interviews_first_candidate_col_index
+        max_w = sheet_max_column_index(rows)
+        data_indices = list(range(fc, max_w)) if max_w > fc else []
+    else:
+        start = 1 if len(rows) > 0 else 0
+        data_indices = list(range(start, len(rows)))
+
+    if not user_counts:
+        raise ValueError("Список пользователей пуст")
+
+    pool = list(data_indices)
+    result: dict[str, list[int]] = {}
+    for em_raw, count in user_counts.items():
+        em = em_raw.lower()
+        taken = pool[:count]
+        pool = pool[count:]
+        result[em] = taken
+
+    for em, indices in result.items():
+        merge_sheet_rows(em, sheet_name, indices)
+    return result
+
+
 def distribute_sheet(
     sheet_name: str,
     per_user: int,

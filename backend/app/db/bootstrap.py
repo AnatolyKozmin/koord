@@ -89,6 +89,87 @@ def seed_superadmin_sql() -> bool:
     return True
 
 
+_REVIEWER_LIST: list[tuple[str, str]] = [
+    ("basova.e", "Басова Екатерина"),
+    ("bedretdinova.al", "Бедретдинова Алина"),
+    ("bedretdinova.s", "Бедретдинова Софья"),
+    ("velichko.o", "Величко Олег"),
+    ("deriglazova.d", "Дериглазова Дарья"),
+    ("dzyarskaya.p", "Дзярская Полина"),
+    ("iskenderov.a", "Искендеров Амиль"),
+    ("kalmykova.p", "Калмыкова Полина"),
+    ("kirilyuk.i", "Кирилюк Илья"),
+    ("kitaeva.a", "Китаева Амуланга"),
+    ("kovalev.g", "Ковалев Георгий"),
+    ("koptelova.e", "Коптелова Ева"),
+    ("kushnir.e", "Кушнир Елизавета"),
+    ("larina.yu", "Ларина Юлия"),
+    ("levina.a", "Левина Алиса"),
+    ("margaryan.m", "Маргарян Марианна"),
+    ("mitrofanova.p", "Митрофанова Полина"),
+    ("pavlova.d", "Павлова Дарья"),
+    ("paliy.v", "Палий Валерия"),
+    ("pivovarova.a", "Пивоварова Анастасия"),
+    ("pogrebnyak.v", "Погребняк Вероника"),
+    ("sagatova.d", "Сагатова Дана"),
+    ("sysoeva.k", "Сысоева Кира"),
+    ("shityagina.a", "Шитягина Арина"),
+    ("shishkova.al", "Шишкова Алина"),
+    ("shonya.a", "Шоня Анастасия"),
+]
+
+
+def seed_reviewer_users_sql() -> dict[str, Any]:
+    """
+    Создаёт учётные записи для 26 проверяющих.
+    Email строится как <slug>@<domain>.  Идемпотентно.
+    """
+    settings = get_settings()
+    domain = (settings.master_seed_domain or "koord.local").strip().lower() or "koord.local"
+    pwd = settings.master_seed_password
+    out: dict[str, Any] = {"created": 0, "skipped_existing": 0, "total": len(_REVIEWER_LIST)}
+    if not pwd:
+        return {**out, "note": "MASTER_SEED_PASSWORD пуст — сид проверяющих пропущен"}
+    with SessionLocal() as session:
+        for slug, full_name in _REVIEWER_LIST:
+            email = f"{slug}@{domain}"
+            if session.scalar(select(User.id).where(User.email == email)):
+                out["skipped_existing"] += 1
+                continue
+            session.add(
+                User(
+                    email=email,
+                    password_hash=hash_password(pwd),
+                    role="user",
+                    master_label=full_name,
+                ),
+            )
+            out["created"] += 1
+        session.commit()
+    return out
+
+
+def cleanup_generic_masters_sql() -> dict[str, Any]:
+    """
+    Удаляет технических пользователей вида masterNN@<domain>, созданных seed_master_users_sql.
+    Вызывается при MASTER_COUNT=0, чтобы убрать ранее сгенерированные аккаунты.
+    """
+    import re
+
+    settings = get_settings()
+    domain = (settings.master_seed_domain or "koord.local").strip().lower() or "koord.local"
+    pattern = re.compile(rf"^master\d+@{re.escape(domain)}$")
+    deleted = 0
+    with SessionLocal() as session:
+        users = session.scalars(select(User).where(User.role == "user")).all()
+        for u in users:
+            if pattern.match(u.email):
+                session.delete(u)
+                deleted += 1
+        session.commit()
+    return {"deleted_generic_masters": deleted}
+
+
 def seed_master_users_sql() -> dict[str, Any]:
     """
     Создаёт master01@…masterN@ в домене master_seed_domain с ролью user и подписью «Мастер отбора k».

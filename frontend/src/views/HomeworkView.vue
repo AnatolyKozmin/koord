@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { colIndexToLetters, quoteSheetName } from "../utils/sheetsA1";
 
 const sheetTitle = ref("Domashki");
+const currentUserLabel = ref<string | null>(null);
 const header = ref<string[]>([]);
 const dataRows = ref<string[][]>([]);
 const dataRowIndices = ref<number[]>([]);
@@ -65,6 +66,10 @@ async function load() {
   err.value = "";
   saveMsg.value = "";
   layoutErr.value = "";
+  try {
+    const me = await api.me().catch(() => null);
+    if (me) currentUserLabel.value = me.master_label ?? null;
+  } catch { /* ignore */ }
   try {
     const names = await api.sheetTabNames();
     sheetTitle.value = names.domashki;
@@ -139,6 +144,9 @@ onMounted(load);
   <div class="hw-page">
     <header class="page-head">
       <h1 class="page-head__title">Домашки (ИДЗ)</h1>
+      <div v-if="currentUserLabel" class="reviewer-banner">
+        Личный кабинет · <strong>{{ currentUserLabel }}</strong>
+      </div>
     </header>
 
     <p v-if="layoutErr" class="msg-muted msg-compact">{{ layoutErr }}</p>
@@ -221,6 +229,16 @@ onMounted(load);
 }
 .page-head {
   margin-bottom: 0.75rem;
+}
+.reviewer-banner {
+  display: inline-block;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--c-purple-light);
+  background: rgba(153, 102, 255, 0.12);
+  border: 1px solid rgba(153, 102, 255, 0.25);
+  border-radius: 20px;
+  padding: 0.2rem 0.75rem;
 }
 .page-head__title {
   margin: 0;

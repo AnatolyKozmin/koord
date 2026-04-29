@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.bootstrap import init_db, migrate_from_redis_if_empty, seed_master_users_sql, seed_superadmin_sql
+from app.db.bootstrap import cleanup_generic_masters_sql, init_db, migrate_from_redis_if_empty, seed_master_users_sql, seed_reviewer_users_sql, seed_superadmin_sql
 from app.routers import admin, ankety, auth, domashki, interviews, sheets, stats
 
 
@@ -13,6 +13,8 @@ async def lifespan(app: FastAPI):
     migrate_from_redis_if_empty()
     seed_superadmin_sql()
     seed_master_users_sql()
+    cleanup_generic_masters_sql()
+    seed_reviewer_users_sql()
     yield
 
 

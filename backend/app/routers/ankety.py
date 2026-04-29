@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.deps import get_current_user
 from app.config import get_settings
-from app.constants.ankety import map_headers
+from app.constants.ankety import (
+    ANKETY_SCORE_OPTIONS,
+    ANKETY_SCORE_OPTIONS_DEFAULT,
+    map_headers,
+)
 from app.services import sheets_service
 
 router = APIRouter(prefix="/ankety", tags=["ankety"])
@@ -32,10 +36,22 @@ def column_layout(user: dict = Depends(get_current_user)) -> dict:
             return None
         return str(header[idx]) if header[idx] is not None else None
 
+    def score_options(raw_header: str | None) -> list[str]:
+        """Допустимые баллы для конкретного маркера."""
+        if not raw_header:
+            return list(ANKETY_SCORE_OPTIONS_DEFAULT)
+        from app.constants.ankety import _norm
+        key = _norm(raw_header)
+        for h, opts in ANKETY_SCORE_OPTIONS.items():
+            if _norm(h) == key:
+                return list(opts)
+        return list(ANKETY_SCORE_OPTIONS_DEFAULT)
+
     return {
         "sheet": sheet,
         "score_column_indices": [
-            {"index": i, "header": cell_title(i)} for i in m.score_cols
+            {"index": i, "header": cell_title(i), "options": score_options(cell_title(i))}
+            for i in m.score_cols
         ],
         "sum_column": {"index": m.sum_col, "header": cell_title(m.sum_col)},
         "level_column": {"index": m.level_col, "header": cell_title(m.level_col)},

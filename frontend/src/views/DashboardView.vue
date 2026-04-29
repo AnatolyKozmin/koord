@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { api } from "../api/client";
 
+const currentUser = ref<{ email: string; role: string; master_label: string | null } | null>(null);
 const stats = ref<{
   meta: Record<string, unknown>;
   row_counts: Record<string, number>;
@@ -29,7 +30,8 @@ const loading = ref(false);
 async function load() {
   err.value = "";
   try {
-    const [s, m] = await Promise.all([api.dashboardStats(), api.masterDashboard()]);
+    const [s, m, me] = await Promise.all([api.dashboardStats(), api.masterDashboard(), api.me().catch(() => null)]);
+    currentUser.value = me;
     stats.value = s;
     master.value = m;
   } catch (e) {
@@ -62,6 +64,10 @@ onMounted(load);
 
 <template>
   <div class="dash">
+    <div v-if="currentUser?.master_label" class="personal-banner">
+      <span class="personal-banner__label">Личный кабинет</span>
+      <strong class="personal-banner__name">{{ currentUser.master_label }}</strong>
+    </div>
     <h1>Дашборд</h1>
     <p class="muted">
       Назначения и пользователи хранятся в БД приложения; цифры по проверкам считаются по кэшу Google Sheets
@@ -128,6 +134,24 @@ onMounted(load);
 <style scoped>
 .dash {
   width: 100%;
+}
+.personal-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(153, 102, 255, 0.1);
+  border: 1px solid rgba(153, 102, 255, 0.25);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.personal-banner__label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.personal-banner__name {
+  font-size: 1rem;
+  color: var(--c-purple-light, #c4b5fd);
 }
 .card-title {
   margin-top: 0;

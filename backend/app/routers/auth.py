@@ -19,4 +19,9 @@ def login(body: LoginRequest):
 
 @router.get("/me", response_model=UserOut)
 def me(user: dict = Depends(get_current_user)):
-    return UserOut(email=user["email"], role=user["role"])
+    full = users_service.get_user(user["email"])
+    return UserOut(
+        email=user["email"],
+        role=user["role"],
+        master_label=full.get("master_label") if full else None,
+    )

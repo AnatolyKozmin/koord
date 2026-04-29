@@ -52,7 +52,7 @@ def get_user(email: str) -> dict | None:
         u = session.scalars(select(User).where(User.email == em)).first()
         if not u:
             return None
-        return {"email": u.email, "password_hash": u.password_hash, "role": u.role}
+        return {"email": u.email, "password_hash": u.password_hash, "role": u.role, "master_label": u.master_label}
 
 
 def authenticate(email: str, password: str) -> dict | None:
@@ -64,8 +64,19 @@ def authenticate(email: str, password: str) -> dict | None:
     return {"email": email.lower(), "role": u["role"]}
 
 
-def list_users() -> list[dict[str, str]]:
+def set_password(email: str, new_password: str) -> bool:
+    em = email.lower()
     with SessionLocal() as session:
-        rows = session.scalars(select(User).order_by(User.email)).all()
-        return [{"email": u.email, "role": u.role} for u in rows]
+        u = session.scalars(select(User).where(User.email == em)).first()
+        if not u:
+            return False
+        u.password_hash = hash_password(new_password)
+        session.commit()
+    return True
+
+
+def list_users() -> list[dict]:
+    with SessionLocal() as session:
+        rows = session.scalars(select(User).order_by(User.master_label, User.email)).all()
+        return [{"email": u.email, "role": u.role, "master_label": u.master_label} for u in rows]
 

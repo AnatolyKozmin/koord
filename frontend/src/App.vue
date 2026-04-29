@@ -27,6 +27,10 @@ function logout() {
 <template>
   <div class="layout">
     <header v-if="authed && route.name !== 'login'" class="top-nav">
+      <RouterLink to="/subs" class="nav-logo">
+        <img src="/brand/mayak.svg" alt="Маяк" />
+        <span class="nav-logo-name">Координаторство'26</span>
+      </RouterLink>
       <RouterLink to="/subs">Сабы</RouterLink>
       <RouterLink to="/ankety">Анкеты</RouterLink>
       <RouterLink to="/homework">Домашки</RouterLink>
