@@ -58,9 +58,15 @@ def master_dashboard() -> dict[str, Any]:
     masters: list[dict[str, Any]] = []
 
     with SessionLocal() as session:
-        users = session.scalars(select(User).where(User.role == "user").order_by(User.email)).all()
+        users = session.scalars(
+            select(User)
+            .where(User.role == "user")
+            .order_by(User.faculty.asc().nulls_last(), User.master_label.asc(), User.email.asc()),
+        ).all()
         for idx, u in enumerate(users):
             label = u.master_label or f"Мастер {idx + 1}"
+            if u.faculty:
+                label = f"{label} · {u.faculty}"
             assign = assignments_service.get_assignment(u.email)
 
             # Анкеты
@@ -116,6 +122,7 @@ def master_dashboard() -> dict[str, Any]:
                 {
                     "email": u.email,
                     "label": label,
+                    "faculty": u.faculty,
                     "ankety": {
                         "total": a_total,
                         "reviewed": a_rev,

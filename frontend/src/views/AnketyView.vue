@@ -5,6 +5,7 @@ import { colIndexToLetters, quoteSheetName } from "../utils/sheetsA1";
 
 const sheetTitle = ref("Анкеты");
 const currentUserLabel = ref<string | null>(null);
+const currentUserFaculty = ref<string | null>(null);
 const header = ref<string[]>([]);
 const dataRows = ref<string[][]>([]);
 const dataRowIndices = ref<number[]>([]);
@@ -114,7 +115,10 @@ async function load() {
   layoutErr.value = "";
   try {
     const me = await api.me().catch(() => null);
-    if (me) currentUserLabel.value = (me as { master_label?: string | null }).master_label ?? null;
+    if (me) {
+      currentUserLabel.value = me.master_label ?? null;
+      currentUserFaculty.value = me.faculty ?? null;
+    }
   } catch { /* ignore */ }
   try {
     const names = await api.sheetTabNames();
@@ -206,8 +210,10 @@ onMounted(load);
   <div class="ankety-page">
     <header class="page-head">
       <h1 class="page-head__title">Анкеты</h1>
-      <div v-if="currentUserLabel" class="reviewer-banner">
-        Личный кабинет · <strong>{{ currentUserLabel }}</strong>
+      <div v-if="currentUserLabel || currentUserFaculty" class="reviewer-banner">
+        Личный кабинет ·
+        <strong v-if="currentUserLabel">{{ currentUserLabel }}</strong>
+        <span v-if="currentUserFaculty" class="reviewer-banner-faculty"> · {{ currentUserFaculty }}</span>
       </div>
     </header>
 
@@ -323,6 +329,10 @@ onMounted(load);
   border: 1px solid rgba(153, 102, 255, 0.25);
   border-radius: 20px;
   padding: 0.2rem 0.75rem;
+}
+.reviewer-banner-faculty {
+  font-weight: 600;
+  opacity: 0.95;
 }
 
 .page-head__title {

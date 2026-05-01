@@ -20,3 +20,4 @@ class UserOut(BaseModel):
     email: str
     role: str
     master_label: str | None = None
+    faculty: str | None = None

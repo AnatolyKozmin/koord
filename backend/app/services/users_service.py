@@ -30,7 +30,7 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(_bcrypt_password(password), password_hash)
 
 
-def create_user(email: str, password: str, role: Role) -> None:
+def create_user(email: str, password: str, role: Role, faculty: str | None = None) -> None:
     em = email.lower()
     with SessionLocal() as session:
         if session.scalar(select(User.id).where(User.email == em)):
@@ -41,6 +41,7 @@ def create_user(email: str, password: str, role: Role) -> None:
                 password_hash=hash_password(password),
                 role=role,
                 master_label=None,
+                faculty=faculty,
             ),
         )
         session.commit()
@@ -52,7 +53,13 @@ def get_user(email: str) -> dict | None:
         u = session.scalars(select(User).where(User.email == em)).first()
         if not u:
             return None
-        return {"email": u.email, "password_hash": u.password_hash, "role": u.role, "master_label": u.master_label}
+        return {
+            "email": u.email,
+            "password_hash": u.password_hash,
+            "role": u.role,
+            "master_label": u.master_label,
+            "faculty": u.faculty,
+        }
 
 
 def authenticate(email: str, password: str) -> dict | None:
@@ -75,8 +82,23 @@ def set_password(email: str, new_password: str) -> bool:
     return True
 
 
+def set_user_faculty(email: str, faculty: str | None) -> bool:
+    em = email.lower()
+    with SessionLocal() as session:
+        u = session.scalars(select(User).where(User.email == em)).first()
+        if not u:
+            return False
+        u.faculty = faculty
+        session.commit()
+    return True
+
+
 def list_users() -> list[dict]:
     with SessionLocal() as session:
-        rows = session.scalars(select(User).order_by(User.master_label, User.email)).all()
-        return [{"email": u.email, "role": u.role, "master_label": u.master_label} for u in rows]
+        rows = session.scalars(
+            select(User).order_by(User.faculty.asc().nulls_last(), User.master_label.asc(), User.email.asc()),
+        ).all()
+        return [
+            {"email": u.email, "role": u.role, "master_label": u.master_label, "faculty": u.faculty} for u in rows
+        ]
 

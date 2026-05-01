@@ -68,7 +68,10 @@ def merge_sheet_rows(email: str, sheet_name: str, row_indices: list[int]) -> Non
 def list_all_assignments() -> dict[str, dict[str, list[int]]]:
     with SessionLocal() as session:
         rows = session.execute(
-            select(User.email, Assignment.sheet_name, Assignment.item_index, Assignment.axis),
+            select(User.email, Assignment.sheet_name, Assignment.item_index, Assignment.axis).join(
+                Assignment,
+                Assignment.user_id == User.id,
+            ),
         ).all()
         out: dict[str, dict[str, list[int]]] = {}
         for email, sheet_name, item_index, _axis in rows:

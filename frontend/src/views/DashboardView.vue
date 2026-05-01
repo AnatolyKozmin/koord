@@ -2,7 +2,9 @@
 import { onMounted, ref } from "vue";
 import { api } from "../api/client";
 
-const currentUser = ref<{ email: string; role: string; master_label: string | null } | null>(null);
+const currentUser = ref<{ email: string; role: string; master_label: string | null; faculty: string | null } | null>(
+  null,
+);
 const stats = ref<{
   meta: Record<string, unknown>;
   row_counts: Record<string, number>;
@@ -12,6 +14,7 @@ const stats = ref<{
 type MasterRow = {
   email: string;
   label: string;
+  faculty: string | null;
   ankety: { total: number; reviewed: number; pending: number };
   domashki: { total: number; reviewed: number; pending: number };
   interviews: { total: number; conducted: number; pending: number };
@@ -64,9 +67,10 @@ onMounted(load);
 
 <template>
   <div class="dash">
-    <div v-if="currentUser?.master_label" class="personal-banner">
+    <div v-if="currentUser?.master_label || currentUser?.faculty" class="personal-banner">
       <span class="personal-banner__label">Личный кабинет</span>
-      <strong class="personal-banner__name">{{ currentUser.master_label }}</strong>
+      <strong v-if="currentUser?.master_label" class="personal-banner__name">{{ currentUser.master_label }}</strong>
+      <span v-if="currentUser?.faculty" class="personal-banner__fac">{{ currentUser.faculty }}</span>
     </div>
     <h1>Дашборд</h1>
     <p class="muted">
@@ -152,6 +156,13 @@ onMounted(load);
 .personal-banner__name {
   font-size: 1rem;
   color: var(--c-purple-light, #c4b5fd);
+}
+.personal-banner__fac {
+  font-size: 0.92rem;
+  color: rgba(243, 242, 242, 0.75);
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
 }
 .card-title {
   margin-top: 0;

@@ -3,7 +3,16 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.deps import require_super_admin
-from app.schemas.admin import AssignmentPutRequest, AssignRowRequest, DistributeCustomRequest, DistributeRequest, SetPasswordRequest, UserCreateRequest, UserOutAdmin
+from app.schemas.admin import (
+    AssignmentPutRequest,
+    AssignRowRequest,
+    DistributeCustomRequest,
+    DistributeRequest,
+    SetPasswordRequest,
+    UserCreateRequest,
+    UserFacultyPatch,
+    UserOutAdmin,
+)
 from app.services import assignments_service, users_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -17,10 +26,29 @@ def admin_list_users(_: dict = Depends(require_super_admin)) -> list[UserOutAdmi
 @router.post("/users", response_model=UserOutAdmin)
 def admin_create_user(body: UserCreateRequest, _: dict = Depends(require_super_admin)) -> UserOutAdmin:
     try:
-        users_service.create_user(body.email, body.password, body.role)
+        users_service.create_user(body.email, body.password, body.role, body.faculty)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Пользователь уже существует")
-    return UserOutAdmin(email=body.email.lower(), role=body.role)
+    u = users_service.get_user(body.email)
+    if not u:
+        raise HTTPException(status_code=500, detail="Создан пользователь, но не удалось прочитать")
+    return UserOutAdmin(
+        email=u["email"],
+        role=u["role"],
+        master_label=u.get("master_label"),
+        faculty=u.get("faculty"),
+    )
+
+
+@router.patch("/users/{email}/faculty")
+def admin_set_user_faculty(
+    email: str,
+    body: UserFacultyPatch,
+    _: dict = Depends(require_super_admin),
+) -> dict[str, Any]:
+    if not users_service.set_user_faculty(email, body.faculty):
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return {"ok": True, "email": email.lower(), "faculty": body.faculty}
 
 
 @router.patch("/users/{email}/password")

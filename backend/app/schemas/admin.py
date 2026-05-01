@@ -3,6 +3,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.constants.faculties import REVIEWER_FACULTIES
+
 # Принимаем любой email вида user@domain.tld, включая .local и другие внутренние домены
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$|^[^@\s]+@[^@\s]+$")
 
@@ -21,17 +23,29 @@ class UserCreateRequest(BaseModel):
     email: AnyEmail
     password: str = Field(min_length=4)
     role: Literal["user", "super_admin"] = "user"
+    faculty: str | None = None
 
     @field_validator("email", mode="before")
     @classmethod
     def normalise_email(cls, v: str) -> str:
         return _norm_email(v)
 
+    @field_validator("faculty", mode="before")
+    @classmethod
+    def check_faculty_create(cls, v: object) -> str | None:
+        if v is None or v == "":
+            return None
+        s = str(v).strip()
+        if s not in REVIEWER_FACULTIES:
+            raise ValueError(f"Неизвестный факультет: {s}")
+        return s
+
 
 class UserOutAdmin(BaseModel):
     email: str
     role: str
     master_label: str | None = None
+    faculty: str | None = None
 
 
 class AssignmentPutRequest(BaseModel):
@@ -57,6 +71,20 @@ class DistributeRequest(BaseModel):
 
 class SetPasswordRequest(BaseModel):
     password: str = Field(min_length=4)
+
+
+class UserFacultyPatch(BaseModel):
+    faculty: str | None = None
+
+    @field_validator("faculty", mode="before")
+    @classmethod
+    def check_faculty_patch(cls, v: object) -> str | None:
+        if v is None or v == "":
+            return None
+        s = str(v).strip()
+        if s not in REVIEWER_FACULTIES:
+            raise ValueError(f"Неизвестный факультет: {s}")
+        return s
 
 
 class DistributeCustomRequest(BaseModel):

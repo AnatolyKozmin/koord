@@ -14,7 +14,7 @@ async function submit() {
   error.value = "";
   loading.value = true;
   try {
-    const res = await api.login(email.value, password.value);
+    const res = await api.login(email.value.trim(), password.value);
     setToken(res.access_token);
     const me = await api.me();
     setRole(me.role);

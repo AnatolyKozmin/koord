@@ -24,4 +24,5 @@ def me(user: dict = Depends(get_current_user)):
         email=user["email"],
         role=user["role"],
         master_label=full.get("master_label") if full else None,
+        faculty=full.get("faculty") if full else None,
     )

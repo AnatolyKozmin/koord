@@ -2,7 +2,18 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { api } from "../api/client";
 
-type Reviewer = { email: string; role: string; master_label: string | null };
+type Reviewer = { email: string; role: string; master_label: string | null; faculty: string | null };
+
+const REVIEWER_FACULTIES = [
+  "НАБ",
+  "ВШУ",
+  "ФЭБ",
+  "ИТиАБД",
+  "Финфак",
+  "Юрфак",
+  "МЭО",
+  "СНиМК",
+] as const;
 type MasterStat = {
   email: string;
   label: string;
@@ -38,6 +49,11 @@ const pwdInputs = ref<Record<string, string>>({});
 const pwdMsg = ref<Record<string, string>>({});
 const pwdErr = ref<Record<string, string>>({});
 
+const facultyMsg = ref<Record<string, string>>({});
+const facultyErr = ref<Record<string, string>>({});
+
+const newUserFaculty = ref("");
+
 /* ── Равномерное распределение ── */
 const sheetForDist = ref("");
 const perUser = ref(10);
@@ -48,7 +64,6 @@ const distErr = ref("");
 
 /* ── Вкладка «По строкам» ── */
 const rowsSheet = ref("");
-const sheetHeader = ref<string[]>([]);
 const sheetRows = ref<{ index: number; preview: string[]; reviewer: string | null }[]>([]);
 const rowsLoading = ref(false);
 const rowsErr = ref("");
@@ -59,6 +74,37 @@ const reviewers = computed(() => users.value.filter((u) => u.role === "user"));
 
 function displayName(u: Reviewer) {
   return u.master_label || u.email;
+}
+
+/** ФИО кандидата: колонки C–E (индексы 2–4), как на странице «Анкеты» после пропуска A/B. */
+function fioFromPreview(preview: string[]): string {
+  const a = (preview[2] ?? "").trim();
+  const b = (preview[3] ?? "").trim();
+  const c = (preview[4] ?? "").trim();
+  const joined = [a, b, c].filter(Boolean).join(" ");
+  if (joined) return joined;
+  return preview.slice(2, 8).filter((x) => x && String(x).trim()).join(" ").trim() || "—";
+}
+
+function reviewerLabel(email: string | null): string {
+  if (!email) return "— не назначен —";
+  const lo = email.toLowerCase();
+  const u = reviewers.value.find((x) => x.email.toLowerCase() === lo);
+  return u?.master_label || u?.email || email;
+}
+
+/** Факультет проверяющего по email (из админки пользователей). */
+function reviewerFaculty(email: string | null): string | null {
+  if (!email) return null;
+  const lo = email.toLowerCase();
+  const u = reviewers.value.find((x) => x.email.toLowerCase() === lo);
+  return u?.faculty ?? null;
+}
+
+/** Подпись в списке назначения: ФИО · факультет */
+function reviewerPickLabel(r: Reviewer): string {
+  const name = displayName(r);
+  return r.faculty ? `${name} · ${r.faculty}` : name;
 }
 
 function assignCount(email: string): number {
@@ -110,10 +156,16 @@ async function createUser() {
     return;
   }
   try {
-    await api.adminCreateUser(newEmail.value.trim(), newPassword.value.trim());
+    await api.adminCreateUser(
+      newEmail.value.trim(),
+      newPassword.value.trim(),
+      "user",
+      newUserFaculty.value.trim() || null,
+    );
     createMsg.value = `Создан: ${newEmail.value.trim()}`;
     newEmail.value = "";
     newPassword.value = "";
+    newUserFaculty.value = "";
     newLabel.value = "";
     await refresh();
   } catch (e) {
@@ -146,7 +198,17 @@ async function distribute() {
 const filteredRows = computed(() => {
   const q = rowSearch.value.trim().toLowerCase();
   if (!q) return sheetRows.value;
-  return sheetRows.value.filter((r) => r.preview.some((v) => v.toLowerCase().includes(q)));
+  return sheetRows.value.filter((r) => {
+    const fio = fioFromPreview(r.preview).toLowerCase();
+    const fac = (reviewerFaculty(r.reviewer) ?? "").toLowerCase();
+    const revName = (reviewerLabel(r.reviewer) ?? "").toLowerCase();
+    return (
+      fio.includes(q) ||
+      fac.includes(q) ||
+      revName.includes(q) ||
+      r.preview.some((v) => String(v).toLowerCase().includes(q))
+    );
+  });
 });
 
 async function loadSheetRows() {
@@ -155,7 +217,6 @@ async function loadSheetRows() {
   sheetRows.value = [];
   try {
     const res = await api.adminSheetRows(rowsSheet.value);
-    sheetHeader.value = res.header;
     sheetRows.value = res.rows;
   } catch (e) {
     rowsErr.value = e instanceof Error ? e.message : "Ошибка";
@@ -191,6 +252,24 @@ async function setPassword(email: string) {
   } catch (e) {
     pwdErr.value[email] = e instanceof Error ? e.message : "Ошибка";
   }
+}
+
+async function setFaculty(email: string, faculty: string | null) {
+  facultyMsg.value[email] = "";
+  facultyErr.value[email] = "";
+  try {
+    await api.adminPatchUserFaculty(email, faculty);
+    facultyMsg.value[email] = faculty ? `Сохранено: ${faculty}` : "Не задан";
+    const row = users.value.find((x) => x.email === email);
+    if (row) row.faculty = faculty;
+  } catch (e) {
+    facultyErr.value[email] = e instanceof Error ? e.message : "Ошибка";
+  }
+}
+
+function onFacultySelectChange(email: string, e: Event) {
+  const v = (e.target as HTMLSelectElement).value;
+  void setFaculty(email, v || null);
 }
 
 async function clearAssignment(email: string) {
@@ -341,7 +420,9 @@ function pct(done: number, total: number) {
     <div v-if="tab === 'rows'" class="tab-content">
       <div class="card">
         <h3>Назначение по строкам</h3>
-        <p class="muted">Выберите лист, загрузите строки и назначьте проверяющего каждой через выпадающий список.</p>
+        <p class="muted">
+          <strong>ФИО</strong> кандидата — колонки C–E после A/B. Справа — координатор; факультет берётся из карточки пользователя («Пользователи»).
+        </p>
         <div class="form-row" style="align-items: flex-end">
           <div class="field">
             <label>Лист</label>
@@ -368,9 +449,9 @@ function pct(done: number, total: number) {
           <table class="rows-table">
             <thead>
               <tr>
-                <th class="col-num">#</th>
-                <th v-for="(h, hi) in sheetHeader.slice(2)" :key="hi">{{ h || `Кол. ${hi + 3}` }}</th>
-                <th class="col-reviewer">Проверяющий</th>
+                <th class="col-num">Стр.</th>
+                <th class="col-fio">ФИО</th>
+                <th class="col-reviewer-main">Назначенный проверяющий</th>
               </tr>
             </thead>
             <tbody>
@@ -380,17 +461,27 @@ function pct(done: number, total: number) {
                 :class="{ 'row--assigned': !!row.reviewer, 'row--saving': savingRow === row.index }"
               >
                 <td class="col-num muted">{{ row.index }}</td>
-                <td v-for="(val, vi) in row.preview.slice(2)" :key="vi" class="cell-preview">{{ val || '—' }}</td>
-                <td class="col-reviewer">
+                <td class="col-fio">{{ fioFromPreview(row.preview) }}</td>
+                <td class="col-reviewer-main">
+                  <div class="reviewer-display">
+                    <template v-if="row.reviewer">
+                      <span class="reviewer-display__name">{{ reviewerLabel(row.reviewer) }}</span>
+                      <span v-if="reviewerFaculty(row.reviewer)" class="reviewer-display__fac">
+                        · {{ reviewerFaculty(row.reviewer) }}
+                      </span>
+                      <span v-else class="reviewer-display__fac reviewer-display__fac--empty">· факультет не задан</span>
+                    </template>
+                    <span v-else class="reviewer-display__none">не назначен</span>
+                  </div>
                   <select
                     :value="row.reviewer ?? ''"
                     class="reviewer-select"
                     :disabled="savingRow === row.index"
                     @change="(e) => assignRow(row.index, (e.target as HTMLSelectElement).value || null)"
                   >
-                    <option value="">— не назначен —</option>
+                    <option value="">Выбрать проверяющего…</option>
                     <option v-for="r in reviewers" :key="r.email" :value="r.email">
-                      {{ r.master_label || r.email }}
+                      {{ reviewerPickLabel(r) }}
                     </option>
                   </select>
                 </td>
@@ -464,6 +555,7 @@ function pct(done: number, total: number) {
               <td class="reviewer-cell">
                 <div class="reviewer-name">{{ displayName(u) }}</div>
                 <div class="reviewer-email">{{ u.email }}</div>
+                <div v-if="u.faculty" class="reviewer-faculty-tag">{{ u.faculty }}</div>
               </td>
               <td v-if="tabNames" class="num-cell">{{ assignCountForSheet(u.email, tabNames.ankety) }}</td>
               <td v-if="tabNames" class="num-cell">{{ assignCountForSheet(u.email, tabNames.domashki) }}</td>
@@ -492,6 +584,13 @@ function pct(done: number, total: number) {
             <label>Пароль</label>
             <input v-model="newPassword" type="password" autocomplete="new-password" />
           </div>
+          <div class="field faculty-field">
+            <label>Факультет</label>
+            <select v-model="newUserFaculty" class="select-like">
+              <option value="">— не указан —</option>
+              <option v-for="f in REVIEWER_FACULTIES" :key="f" :value="f">{{ f }}</option>
+            </select>
+          </div>
         </div>
         <button class="btn btn-primary" @click="createUser">Создать</button>
         <span v-if="createMsg" class="ok-msg" style="margin-left: 1rem">{{ createMsg }}</span>
@@ -507,6 +606,7 @@ function pct(done: number, total: number) {
               <th>Email</th>
               <th>Роль</th>
               <th>Назначений</th>
+              <th class="col-faculty-admin">Факультет</th>
               <th>Новый пароль</th>
             </tr>
           </thead>
@@ -516,6 +616,18 @@ function pct(done: number, total: number) {
               <td class="mono">{{ u.email }}</td>
               <td><span :class="['role-badge', u.role === 'super_admin' ? 'role-badge--super' : 'role-badge--user']">{{ u.role }}</span></td>
               <td class="num-cell">{{ assignCount(u.email) }}</td>
+              <td class="col-faculty-admin">
+                <select
+                  class="faculty-select"
+                  :value="u.faculty ?? ''"
+                  @change="onFacultySelectChange(u.email, $event)"
+                >
+                  <option value="">— не задан —</option>
+                  <option v-for="f in REVIEWER_FACULTIES" :key="f" :value="f">{{ f }}</option>
+                </select>
+                <span v-if="facultyMsg[u.email]" class="ok-msg faculty-hint">{{ facultyMsg[u.email] }}</span>
+                <span v-if="facultyErr[u.email]" class="err-msg faculty-hint">{{ facultyErr[u.email] }}</span>
+              </td>
               <td>
                 <div class="pwd-row">
                   <input
@@ -670,6 +782,12 @@ function pct(done: number, total: number) {
 .assign-table th { text-align: center; padding: 0.6rem 0.75rem; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
 .assign-table th:first-child { text-align: left; }
 .assign-table td { padding: 0.55rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
+.reviewer-faculty-tag {
+  margin-top: 0.25rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--c-purple-light, #c4b5fd);
+}
 
 /* Rows tab */
 .rows-toolbar {
@@ -700,7 +818,7 @@ function pct(done: number, total: number) {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.83rem;
-  min-width: 700px;
+  min-width: 520px;
 }
 .rows-table thead {
   position: sticky;
@@ -721,13 +839,38 @@ function pct(done: number, total: number) {
   border-bottom: 1px solid rgba(255,255,255,0.04);
   vertical-align: middle;
 }
-.col-num { width: 42px; text-align: center; }
-.col-reviewer { width: 200px; }
-.cell-preview {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.col-num { width: 48px; text-align: center; }
+.col-fio {
+  min-width: 200px;
+  max-width: 420px;
+  font-weight: 500;
+  color: var(--text);
+}
+.col-reviewer-main {
+  width: min(340px, 40vw);
+  vertical-align: top;
+}
+.reviewer-display {
+  margin-bottom: 0.35rem;
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+.reviewer-display__name {
+  font-weight: 600;
+  color: var(--c-purple-light, #c4b5fd);
+}
+.reviewer-display__fac {
+  font-weight: 500;
+  color: rgba(243, 242, 242, 0.75);
+}
+.reviewer-display__fac--empty {
+  font-weight: 400;
+  font-style: italic;
+  opacity: 0.65;
+}
+.reviewer-display__none {
+  color: var(--muted);
+  font-style: italic;
 }
 .row--assigned td { background: rgba(74, 222, 128, 0.04); }
 .row--saving td { opacity: 0.5; }
@@ -744,6 +887,23 @@ function pct(done: number, total: number) {
 }
 .reviewer-select:focus { outline: 1px solid var(--c-purple); }
 .reviewer-select:not([value=""]):not(:invalid) { border-color: rgba(74,222,128,0.3); }
+
+/* Users tab: факультет */
+.faculty-field { flex: 1 1 180px; max-width: 240px; }
+.col-faculty-admin { vertical-align: top; min-width: 150px; max-width: 230px; }
+.faculty-select {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.faculty-select:focus { outline: 1px solid var(--c-purple); }
+.faculty-hint { display: block; margin-top: 4px; font-size: 0.72rem; line-height: 1.25; }
 
 /* Password row */
 .pwd-row { display: flex; gap: 0.4rem; align-items: center; }

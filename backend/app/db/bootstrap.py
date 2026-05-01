@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 
 from app.config import get_settings
 from app.db.models import Assignment, Base, User
@@ -16,6 +16,19 @@ from app.services.users_service import hash_password
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+
+
+def migrate_schema_add_user_faculty() -> None:
+    """Для существующих БД: добавить колонку users.faculty (SQLite / PostgreSQL)."""
+    try:
+        insp = inspect(engine)
+        cols = [c["name"] for c in insp.get_columns("users")]
+    except Exception:
+        return
+    if "faculty" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN faculty VARCHAR(64)"))
 
 
 def migrate_from_redis_if_empty() -> dict[str, Any]:
@@ -41,6 +54,7 @@ def migrate_from_redis_if_empty() -> dict[str, Any]:
                     password_hash=data["password_hash"],
                     role=data.get("role", "user"),
                     master_label=None,
+                    faculty=None,
                 ),
             )
             out["users_migrated"] += 1
@@ -142,6 +156,7 @@ def seed_reviewer_users_sql() -> dict[str, Any]:
                     password_hash=hash_password(pwd),
                     role="user",
                     master_label=full_name,
+                    faculty=None,
                 ),
             )
             out["created"] += 1
@@ -196,6 +211,7 @@ def seed_master_users_sql() -> dict[str, Any]:
                     password_hash=hash_password(pwd),
                     role="user",
                     master_label=f"Мастер отбора {k}",
+                    faculty=None,
                 ),
             )
             out["created"] += 1

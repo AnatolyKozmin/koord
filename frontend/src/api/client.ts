@@ -1,3 +1,5 @@
+import { ref } from "vue";
+
 /** Пустая база = запросы на тот же origin (Vite в dev проксирует /api → backend). Иначе полный URL из VITE_API_URL. */
 function apiBase(): string {
   const url = import.meta.env.VITE_API_URL;
@@ -9,24 +11,30 @@ function apiBase(): string {
 
 const base = apiBase();
 
+const TOKEN_KEY = "token";
+const ROLE_KEY = "role";
+
+const tokenRef = ref<string | null>(sessionStorage.getItem(TOKEN_KEY));
+const roleRef = ref<string | null>(sessionStorage.getItem(ROLE_KEY));
+
 export function getToken(): string | null {
-  return sessionStorage.getItem("token");
+  return tokenRef.value;
 }
 
 export function setToken(t: string | null) {
-  if (t) sessionStorage.setItem("token", t);
-  else sessionStorage.removeItem("token");
+  tokenRef.value = t;
+  if (t) sessionStorage.setItem(TOKEN_KEY, t);
+  else sessionStorage.removeItem(TOKEN_KEY);
 }
 
-const ROLE_KEY = "role";
-
 export function setRole(r: string | null) {
+  roleRef.value = r;
   if (r) sessionStorage.setItem(ROLE_KEY, r);
   else sessionStorage.removeItem(ROLE_KEY);
 }
 
 export function getRole(): string | null {
-  return sessionStorage.getItem(ROLE_KEY);
+  return roleRef.value;
 }
 
 async function request<T>(
@@ -54,7 +62,8 @@ export const api = {
       method: "POST",
       json: { email, password },
     }),
-  me: () => request<{ email: string; role: string; master_label: string | null }>("/api/auth/me"),
+  me: () =>
+    request<{ email: string; role: string; master_label: string | null; faculty: string | null }>("/api/auth/me"),
   syncSheets: () =>
     request<{ ok: boolean; sheets: string[]; rows: Record<string, number> }>("/api/sheets/sync", {
       method: "POST",
@@ -75,6 +84,7 @@ export const api = {
       masters: {
         email: string;
         label: string;
+        faculty: string | null;
         ankety: { total: number; reviewed: number; pending: number };
         domashki: { total: number; reviewed: number; pending: number };
         interviews: { total: number; conducted: number; pending: number };
@@ -105,12 +115,21 @@ export const api = {
       result?: unknown;
       error?: string | null;
     }>(`/api/sheets/queue/status/${encodeURIComponent(jobId)}`),
-  adminUsers: () => request<{ email: string; role: string; master_label: string | null }[]>("/api/admin/users"),
-  adminCreateUser: (email: string, password: string, role: "user" | "super_admin" = "user") =>
-    request<{ email: string; role: string; master_label: string | null }>("/api/admin/users", {
-      method: "POST",
-      json: { email, password, role },
-    }),
+  adminUsers: () =>
+    request<{ email: string; role: string; master_label: string | null; faculty: string | null }[]>("/api/admin/users"),
+  adminCreateUser: (
+    email: string,
+    password: string,
+    role: "user" | "super_admin" = "user",
+    faculty?: string | null,
+  ) =>
+    request<{ email: string; role: string; master_label: string | null; faculty: string | null }>(
+      "/api/admin/users",
+      {
+        method: "POST",
+        json: { email, password, role, faculty: faculty ?? null },
+      },
+    ),
   adminAssignments: () => request<Record<string, Record<string, number[]>>>("/api/admin/assignments"),
   adminDistribute: (sheet_name: string, per_user: number, user_emails: string[], by_columns?: boolean) =>
     request<{ ok: boolean; assigned_rows: Record<string, number[]> }>("/api/admin/assignments/distribute", {
@@ -133,6 +152,11 @@ export const api = {
       method: "POST",
       json: { sheet_name, row_index, email },
     }),
+  adminPatchUserFaculty: (email: string, faculty: string | null) =>
+    request<{ ok: boolean; email: string; faculty: string | null }>(
+      `/api/admin/users/${encodeURIComponent(email)}/faculty`,
+      { method: "PATCH", json: { faculty } },
+    ),
   adminSetPassword: (email: string, password: string) =>
     request<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(email)}/password`, {
       method: "PATCH",

@@ -21,6 +21,10 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       RQ_QUEUE_NAME: sheets
+      # Явная передача (чтобы сид координаторов не depended на копирование .env в образ)
+      MASTER_COUNT: "${MASTER_COUNT:-0}"
+      MASTER_SEED_DOMAIN: "${MASTER_SEED_DOMAIN:-koord.local}"
+      MASTER_SEED_PASSWORD: "${MASTER_SEED_PASSWORD:-koord2026}"
     ports:
       - "8011:8011"
     volumes:

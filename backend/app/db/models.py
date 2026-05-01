@@ -17,6 +17,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(32))
     # Подпись в дашборде («Мастер 1»); если null — генерируется по порядку
     master_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Факультет (супер-админ задаёт вручную)
+    faculty: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     assignments: Mapped[list["Assignment"]] = relationship(
         back_populates="user",

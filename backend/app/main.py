@@ -1,20 +1,44 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.bootstrap import cleanup_generic_masters_sql, init_db, migrate_from_redis_if_empty, seed_master_users_sql, seed_reviewer_users_sql, seed_superadmin_sql
+from app.config import get_settings
+from app.db.bootstrap import (
+    cleanup_generic_masters_sql,
+    init_db,
+    migrate_from_redis_if_empty,
+    migrate_schema_add_user_faculty,
+    seed_master_users_sql,
+    seed_reviewer_users_sql,
+    seed_superadmin_sql,
+)
 from app.routers import admin, ankety, auth, domashki, interviews, sheets, stats
+
+
+log = logging.getLogger("uvicorn.error")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    migrate_schema_add_user_faculty()
     migrate_from_redis_if_empty()
     seed_superadmin_sql()
     seed_master_users_sql()
     cleanup_generic_masters_sql()
-    seed_reviewer_users_sql()
+    rv = seed_reviewer_users_sql()
+    s = get_settings()
+    log.info(
+        "seed reviewers: created=%s skipped_existing=%s expected=%s domain=%s pwd_set=%s note=%s",
+        rv.get("created"),
+        rv.get("skipped_existing"),
+        rv.get("total"),
+        s.master_seed_domain,
+        bool(s.master_seed_password),
+        rv.get("note", ""),
+    )
     yield
 
 
