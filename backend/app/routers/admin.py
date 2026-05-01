@@ -6,8 +6,10 @@ from app.auth.deps import require_super_admin
 from app.schemas.admin import (
     AssignmentPutRequest,
     AssignRowRequest,
+    DistributeBalancedRequest,
     DistributeCustomRequest,
     DistributeRequest,
+    ReviewerFacultiesPatch,
     SetPasswordRequest,
     UserCreateRequest,
     UserFacultyPatch,
@@ -37,6 +39,7 @@ def admin_create_user(body: UserCreateRequest, _: dict = Depends(require_super_a
         role=u["role"],
         master_label=u.get("master_label"),
         faculty=u.get("faculty"),
+        reviewer_faculties=u.get("reviewer_faculties") or [],
     )
 
 
@@ -49,6 +52,22 @@ def admin_set_user_faculty(
     if not users_service.set_user_faculty(email, body.faculty):
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     return {"ok": True, "email": email.lower(), "faculty": body.faculty}
+
+
+@router.patch("/users/{email}/reviewer-faculties")
+def admin_set_user_reviewer_faculties(
+    email: str,
+    body: ReviewerFacultiesPatch,
+    _: dict = Depends(require_super_admin),
+) -> dict[str, Any]:
+    """Факультеты кандидатов, которые координатор может проверять (лист «Анкеты»)."""
+    try:
+        ok = users_service.set_user_reviewer_faculties(email, body.faculties)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not ok:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return {"ok": True, "email": email.lower(), "reviewer_faculties": sorted(body.faculties)}
 
 
 @router.patch("/users/{email}/password")
@@ -147,6 +166,26 @@ def admin_assign_row(
         str(body.email) if body.email else None,
     )
     return {"ok": True, "row_index": body.row_index, "email": str(body.email) if body.email else None}
+
+
+@router.post("/assignments/distribute-balanced")
+def admin_distribute_balanced(
+    body: DistributeBalancedRequest,
+    _: dict = Depends(require_super_admin),
+) -> dict[str, Any]:
+    """Распределение анкет: строка каждому проверяющему с допуском по «разрешённым факультетам». Поровну среди допущенных."""
+    known = {u["email"].lower() for u in users_service.list_users()}
+    for e in body.user_emails:
+        if str(e).lower() not in known:
+            raise HTTPException(status_code=400, detail=f"Неизвестный пользователь: {e}")
+    try:
+        result = assignments_service.distribute_anketa_balanced_by_faculty(
+            body.sheet_name.strip(),
+            [str(e) for e in body.user_emails],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, **result}
 
 
 @router.post("/assignments/distribute-custom")

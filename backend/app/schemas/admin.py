@@ -46,6 +46,7 @@ class UserOutAdmin(BaseModel):
     role: str
     master_label: str | None = None
     faculty: str | None = None
+    reviewer_faculties: list[str] = Field(default_factory=list)
 
 
 class AssignmentPutRequest(BaseModel):
@@ -87,12 +88,46 @@ class UserFacultyPatch(BaseModel):
         return s
 
 
+class ReviewerFacultiesPatch(BaseModel):
+    """Факультеты кандидатов, которые координатор может проверять (пустой список — никакие)."""
+
+    faculties: list[str] = Field(default_factory=list)
+
+    @field_validator("faculties", mode="before")
+    @classmethod
+    def check_list(cls, v: object) -> list[str]:
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            raise ValueError("Ожидается массив строк")
+        out: list[str] = []
+        for item in v:
+            s = str(item).strip()
+            if not s:
+                continue
+            if s not in REVIEWER_FACULTIES:
+                raise ValueError(f"Неизвестный факультет: {s}")
+            if s not in out:
+                out.append(s)
+        return sorted(out)
+
+
 class DistributeCustomRequest(BaseModel):
     sheet_name: str = Field(description="Анкеты | Домашки | Enquiries | Собеседования")
     user_counts: dict[str, int] = Field(
         description="Словарь {email: количество_строк} для каждого проверяющего.",
     )
     by_columns: bool = Field(default=False)
+
+
+class DistributeBalancedRequest(BaseModel):
+    sheet_name: str = Field(description="Только лист «Анкеты»")
+    user_emails: list[AnyEmail]
+
+    @field_validator("user_emails", mode="before")
+    @classmethod
+    def normalise_emails(cls, v: list) -> list:
+        return [_norm_email(str(e)) for e in v]
 
 
 class AssignRowRequest(BaseModel):

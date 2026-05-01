@@ -47,6 +47,7 @@ def clean_db() -> None:
     bootstrap.migrate_schema_add_user_faculty()
     with SessionLocal() as session:
         session.execute(text("DELETE FROM assignments"))
+        session.execute(text("DELETE FROM user_reviewer_faculties"))
         session.execute(text("DELETE FROM users"))
         session.commit()
     yield

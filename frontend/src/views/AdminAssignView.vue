@@ -2,7 +2,12 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { api } from "../api/client";
 
-type Reviewer = { email: string; role: string; master_label: string | null; faculty: string | null };
+type Reviewer = {
+  email: string;
+  role: string;
+  master_label: string | null;
+  reviewer_faculties: string[];
+};
 
 const REVIEWER_FACULTIES = [
   "НАБ",
@@ -49,10 +54,8 @@ const pwdInputs = ref<Record<string, string>>({});
 const pwdMsg = ref<Record<string, string>>({});
 const pwdErr = ref<Record<string, string>>({});
 
-const facultyMsg = ref<Record<string, string>>({});
-const facultyErr = ref<Record<string, string>>({});
-
-const newUserFaculty = ref("");
+const revFacMsg = ref<Record<string, string>>({});
+const revFacErr = ref<Record<string, string>>({});
 
 /* ── Равномерное распределение ── */
 const sheetForDist = ref("");
@@ -61,6 +64,8 @@ const distributeByColumns = ref(false);
 const selectedEmails = ref<string[]>([]);
 const distMsg = ref("");
 const distErr = ref("");
+const distBalancedMsg = ref("");
+const distBalancedErr = ref("");
 
 /* ── Вкладка «По строкам» ── */
 const rowsSheet = ref("");
@@ -76,14 +81,19 @@ function displayName(u: Reviewer) {
   return u.master_label || u.email;
 }
 
-/** ФИО кандидата: колонки C–E (индексы 2–4), как на странице «Анкеты» после пропуска A/B. */
+/** Фамилия Имя кандидата: первые два слова из колонки C («ФИО»). */
 function fioFromPreview(preview: string[]): string {
-  const a = (preview[2] ?? "").trim();
-  const b = (preview[3] ?? "").trim();
-  const c = (preview[4] ?? "").trim();
-  const joined = [a, b, c].filter(Boolean).join(" ");
-  if (joined) return joined;
-  return preview.slice(2, 8).filter((x) => x && String(x).trim()).join(" ").trim() || "—";
+  const fio = (preview[2] ?? "").trim();
+  if (fio) {
+    return fio.split(/\s+/).slice(0, 2).join(" ");
+  }
+  const surname = (preview[1] ?? "").trim();
+  return surname || "—";
+}
+
+/** Факультет кандидата: колонка G («Укажи свой факультет»), индекс 6. */
+function candidateFaculty(preview: string[]): string {
+  return (preview[6] ?? "").trim();
 }
 
 function reviewerLabel(email: string | null): string {
@@ -93,18 +103,20 @@ function reviewerLabel(email: string | null): string {
   return u?.master_label || u?.email || email;
 }
 
-/** Факультет проверяющего по email (из админки пользователей). */
-function reviewerFaculty(email: string | null): string | null {
-  if (!email) return null;
+/** Список факультетов кандидатов, которые можно раздать этому проверяющему при автовыдаче анкет. */
+function reviewerAllowedFacultiesList(email: string | null): string[] {
+  if (!email) return [];
   const lo = email.toLowerCase();
   const u = reviewers.value.find((x) => x.email.toLowerCase() === lo);
-  return u?.faculty ?? null;
+  return u?.reviewer_faculties ?? [];
 }
 
-/** Подпись в списке назначения: ФИО · факультет */
+/** Подпись в выпадающих списках: имя · факультеты, которые можно раздать при автовыдаче */
 function reviewerPickLabel(r: Reviewer): string {
   const name = displayName(r);
-  return r.faculty ? `${name} · ${r.faculty}` : name;
+  if (r.reviewer_faculties?.length)
+    return `${name} · можно: ${r.reviewer_faculties.join(", ")}`;
+  return name;
 }
 
 function assignCount(email: string): number {
@@ -127,7 +139,12 @@ async function refresh() {
       api.sheetTabNames(),
       api.masterDashboard().catch(() => ({ masters: [], cache_loaded: false, note: null })),
     ]);
-    users.value = u;
+    users.value = u.map((row) => ({
+      email: row.email,
+      role: row.role,
+      master_label: row.master_label,
+      reviewer_faculties: Array.isArray(row.reviewer_faculties) ? row.reviewer_faculties : [],
+    }));
     assignments.value = a;
     tabNames.value = n;
     stats.value = s.masters;
@@ -156,16 +173,10 @@ async function createUser() {
     return;
   }
   try {
-    await api.adminCreateUser(
-      newEmail.value.trim(),
-      newPassword.value.trim(),
-      "user",
-      newUserFaculty.value.trim() || null,
-    );
+    await api.adminCreateUser(newEmail.value.trim(), newPassword.value.trim(), "user", null);
     createMsg.value = `Создан: ${newEmail.value.trim()}`;
     newEmail.value = "";
     newPassword.value = "";
-    newUserFaculty.value = "";
     newLabel.value = "";
     await refresh();
   } catch (e) {
@@ -195,16 +206,66 @@ async function distribute() {
   }
 }
 
+async function distributeBalancedFaculty() {
+  distBalancedMsg.value = "";
+  distBalancedErr.value = "";
+  if (!tabNames.value) {
+    distBalancedErr.value = "Названия листов не загружены";
+    return;
+  }
+  if (sheetForDist.value !== tabNames.value.ankety) {
+    distBalancedErr.value = "Распределение по допускам работает только для листа «Анкеты».";
+    return;
+  }
+  if (!selectedEmails.value.length) {
+    distBalancedErr.value = "Выберите хотя бы одного проверяющего";
+    return;
+  }
+  try {
+    const res = await api.adminDistributeBalanced(sheetForDist.value, selectedEmails.value);
+    const un =
+      res.unassigned?.length > 0
+        ? ` Не распределено строк (${res.unassigned.length}): ${res.unassigned.join(", ")}.`
+        : "";
+    distBalancedMsg.value = `Готово.${un}`;
+    await refresh();
+  } catch (e) {
+    distBalancedErr.value = e instanceof Error ? e.message : "Ошибка";
+  }
+}
+
+async function toggleReviewerFaculty(email: string, faculty: string, checked: boolean) {
+  revFacMsg.value[email] = "";
+  revFacErr.value[email] = "";
+  const u = users.value.find((x) => x.email === email);
+  if (!u) return;
+  const set = new Set(u.reviewer_faculties ?? []);
+  if (checked) set.add(faculty);
+  else set.delete(faculty);
+  const next = [...set].sort();
+  try {
+    await api.adminPatchReviewerFaculties(email, next);
+    u.reviewer_faculties = next;
+    revFacMsg.value[email] = next.length ? `Сохранено: ${next.join(", ")}` : "Нет допусков — не попадёт в автораздачу анкет";
+  } catch (e) {
+    revFacErr.value[email] = e instanceof Error ? e.message : "Ошибка";
+  }
+}
+
 const filteredRows = computed(() => {
   const q = rowSearch.value.trim().toLowerCase();
   if (!q) return sheetRows.value;
   return sheetRows.value.filter((r) => {
     const fio = fioFromPreview(r.preview).toLowerCase();
-    const fac = (reviewerFaculty(r.reviewer) ?? "").toLowerCase();
+    const candFac = candidateFaculty(r.preview).toLowerCase();
+    const allow = reviewerAllowedFacultiesList(r.reviewer)
+      .join(" ")
+      .toLowerCase();
     const revName = (reviewerLabel(r.reviewer) ?? "").toLowerCase();
     return (
       fio.includes(q) ||
-      fac.includes(q) ||
+      candFac.includes(q) ||
+      allow.includes(q) ||
       revName.includes(q) ||
       r.preview.some((v) => String(v).toLowerCase().includes(q))
     );
@@ -252,24 +313,6 @@ async function setPassword(email: string) {
   } catch (e) {
     pwdErr.value[email] = e instanceof Error ? e.message : "Ошибка";
   }
-}
-
-async function setFaculty(email: string, faculty: string | null) {
-  facultyMsg.value[email] = "";
-  facultyErr.value[email] = "";
-  try {
-    await api.adminPatchUserFaculty(email, faculty);
-    facultyMsg.value[email] = faculty ? `Сохранено: ${faculty}` : "Не задан";
-    const row = users.value.find((x) => x.email === email);
-    if (row) row.faculty = faculty;
-  } catch (e) {
-    facultyErr.value[email] = e instanceof Error ? e.message : "Ошибка";
-  }
-}
-
-function onFacultySelectChange(email: string, e: Event) {
-  const v = (e.target as HTMLSelectElement).value;
-  void setFaculty(email, v || null);
 }
 
 async function clearAssignment(email: string) {
@@ -421,7 +464,8 @@ function pct(done: number, total: number) {
       <div class="card">
         <h3>Назначение по строкам</h3>
         <p class="muted">
-          <strong>ФИО</strong> кандидата — колонки C–E после A/B. Справа — координатор; факультет берётся из карточки пользователя («Пользователи»).
+          <strong>ФИО</strong> кандидата — колонки C–E после A/B. Факультет кандидата — из колонки «Укажи свой факультет»
+          в превью. Для анкет через «Пользователи» задайте <strong>факультеты, какие анкеты можно раздать</strong> каждому координатору (автовыдача смотрит только на это).
         </p>
         <div class="form-row" style="align-items: flex-end">
           <div class="field">
@@ -461,15 +505,25 @@ function pct(done: number, total: number) {
                 :class="{ 'row--assigned': !!row.reviewer, 'row--saving': savingRow === row.index }"
               >
                 <td class="col-num muted">{{ row.index }}</td>
-                <td class="col-fio">{{ fioFromPreview(row.preview) }}</td>
+                <td class="col-fio">
+                  {{ fioFromPreview(row.preview) }}<span
+                    v-if="candidateFaculty(row.preview)"
+                    class="muted"
+                  > · {{ candidateFaculty(row.preview) }}</span>
+                </td>
                 <td class="col-reviewer-main">
                   <div class="reviewer-display">
                     <template v-if="row.reviewer">
                       <span class="reviewer-display__name">{{ reviewerLabel(row.reviewer) }}</span>
-                      <span v-if="reviewerFaculty(row.reviewer)" class="reviewer-display__fac">
-                        · {{ reviewerFaculty(row.reviewer) }}
+                      <span
+                        v-if="reviewerAllowedFacultiesList(row.reviewer).length"
+                        class="reviewer-display__fac"
+                      >
+                        · можно: {{ reviewerAllowedFacultiesList(row.reviewer).join(", ") }}
                       </span>
-                      <span v-else class="reviewer-display__fac reviewer-display__fac--empty">· факультет не задан</span>
+                      <span v-else class="reviewer-display__fac reviewer-display__fac--empty">
+                        · для анкет не задан список факультетов
+                      </span>
                     </template>
                     <span v-else class="reviewer-display__none">не назначен</span>
                   </div>
@@ -529,10 +583,23 @@ function pct(done: number, total: number) {
             {{ displayName(u) }}
           </label>
         </div>
-        <div style="margin-top: 0.75rem; display: flex; gap: 1rem; align-items: center;">
-          <button class="btn btn-primary" @click="distribute">Раздать по {{ perUser }}</button>
+        <div style="margin-top: 0.75rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" type="button" @click="distribute">Раздать по {{ perUser }}</button>
           <span v-if="distMsg" class="ok-msg">{{ distMsg }}</span>
           <span v-if="distErr" class="err-msg">{{ distErr }}</span>
+        </div>
+        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+          <p class="muted" style="margin-bottom: 0.5rem">
+            <strong>По факультетам кандидата:</strong> в «Пользователи» у каждого отметьте, <strong>какие факультеты анкет</strong> ему можно выдавать при автоматическом распределении.
+            Затем все строки листа «Анкеты» снимутся с координаторов и будут заново разделены поровну только между теми, у кого в списке есть факультет из ячейки «Укажи свой факультет».
+          </p>
+          <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <button class="btn btn-primary" type="button" @click="distributeBalancedFaculty">
+              Раздать анкеты с учётом допусков
+            </button>
+            <span v-if="distBalancedMsg" class="ok-msg">{{ distBalancedMsg }}</span>
+            <span v-if="distBalancedErr" class="err-msg">{{ distBalancedErr }}</span>
+          </div>
         </div>
       </div>
 
@@ -555,7 +622,9 @@ function pct(done: number, total: number) {
               <td class="reviewer-cell">
                 <div class="reviewer-name">{{ displayName(u) }}</div>
                 <div class="reviewer-email">{{ u.email }}</div>
-                <div v-if="u.faculty" class="reviewer-faculty-tag">{{ u.faculty }}</div>
+                <div v-if="u.reviewer_faculties?.length" class="reviewer-ankety-tag">
+                  автовыдача анкет: {{ u.reviewer_faculties.join(", ") }}
+                </div>
               </td>
               <td v-if="tabNames" class="num-cell">{{ assignCountForSheet(u.email, tabNames.ankety) }}</td>
               <td v-if="tabNames" class="num-cell">{{ assignCountForSheet(u.email, tabNames.domashki) }}</td>
@@ -572,6 +641,10 @@ function pct(done: number, total: number) {
 
     <!-- ═══════════════════ USERS ═══════════════════ -->
     <div v-if="tab === 'users'" class="tab-content">
+      <p class="muted" style="margin-bottom: 1rem">
+        Поле «из какого факультета проверяющий» не используется. Важно только: какие факультеты кандидатов в анкете
+        <strong>можно автоматически раздать</strong> каждому координатору (галочки в таблице).
+      </p>
       <!-- Создать -->
       <div class="card">
         <h3>Новый пользователь</h3>
@@ -583,13 +656,6 @@ function pct(done: number, total: number) {
           <div class="field">
             <label>Пароль</label>
             <input v-model="newPassword" type="password" autocomplete="new-password" />
-          </div>
-          <div class="field faculty-field">
-            <label>Факультет</label>
-            <select v-model="newUserFaculty" class="select-like">
-              <option value="">— не указан —</option>
-              <option v-for="f in REVIEWER_FACULTIES" :key="f" :value="f">{{ f }}</option>
-            </select>
           </div>
         </div>
         <button class="btn btn-primary" @click="createUser">Создать</button>
@@ -606,7 +672,7 @@ function pct(done: number, total: number) {
               <th>Email</th>
               <th>Роль</th>
               <th>Назначений</th>
-              <th class="col-faculty-admin">Факультет</th>
+              <th class="col-reviewer-facs">Какие анкеты можно раздать (авто)</th>
               <th>Новый пароль</th>
             </tr>
           </thead>
@@ -616,17 +682,19 @@ function pct(done: number, total: number) {
               <td class="mono">{{ u.email }}</td>
               <td><span :class="['role-badge', u.role === 'super_admin' ? 'role-badge--super' : 'role-badge--user']">{{ u.role }}</span></td>
               <td class="num-cell">{{ assignCount(u.email) }}</td>
-              <td class="col-faculty-admin">
-                <select
-                  class="faculty-select"
-                  :value="u.faculty ?? ''"
-                  @change="onFacultySelectChange(u.email, $event)"
-                >
-                  <option value="">— не задан —</option>
-                  <option v-for="f in REVIEWER_FACULTIES" :key="f" :value="f">{{ f }}</option>
-                </select>
-                <span v-if="facultyMsg[u.email]" class="ok-msg faculty-hint">{{ facultyMsg[u.email] }}</span>
-                <span v-if="facultyErr[u.email]" class="err-msg faculty-hint">{{ facultyErr[u.email] }}</span>
+              <td class="col-reviewer-facs">
+                <div class="rev-fac-grid">
+                  <label v-for="f in REVIEWER_FACULTIES" :key="u.email + f" class="rev-fac-chip">
+                    <input
+                      type="checkbox"
+                      :checked="(u.reviewer_faculties ?? []).includes(f)"
+                      @change="(e) => toggleReviewerFaculty(u.email, f, (e.target as HTMLInputElement).checked)"
+                    />
+                    {{ f }}
+                  </label>
+                </div>
+                <span v-if="revFacMsg[u.email]" class="ok-msg faculty-hint">{{ revFacMsg[u.email] }}</span>
+                <span v-if="revFacErr[u.email]" class="err-msg faculty-hint">{{ revFacErr[u.email] }}</span>
               </td>
               <td>
                 <div class="pwd-row">
@@ -782,12 +850,6 @@ function pct(done: number, total: number) {
 .assign-table th { text-align: center; padding: 0.6rem 0.75rem; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
 .assign-table th:first-child { text-align: left; }
 .assign-table td { padding: 0.55rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
-.reviewer-faculty-tag {
-  margin-top: 0.25rem;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--c-purple-light, #c4b5fd);
-}
 
 /* Rows tab */
 .rows-toolbar {
@@ -888,22 +950,38 @@ function pct(done: number, total: number) {
 .reviewer-select:focus { outline: 1px solid var(--c-purple); }
 .reviewer-select:not([value=""]):not(:invalid) { border-color: rgba(74,222,128,0.3); }
 
-/* Users tab: факультет */
-.faculty-field { flex: 1 1 180px; max-width: 240px; }
-.col-faculty-admin { vertical-align: top; min-width: 150px; max-width: 230px; }
-.faculty-select {
-  width: 100%;
-  padding: 0.3rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.04);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-.faculty-select:focus { outline: 1px solid var(--c-purple); }
+/* Users tab */
 .faculty-hint { display: block; margin-top: 4px; font-size: 0.72rem; line-height: 1.25; }
+
+.col-reviewer-facs {
+  vertical-align: top;
+  min-width: 200px;
+  max-width: 320px;
+}
+.rev-fac-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.rev-fac-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.rev-fac-chip input {
+  accent-color: var(--c-purple-light, #a78bfa);
+}
+
+.reviewer-ankety-tag {
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: rgba(196, 181, 253, 0.95);
+}
 
 /* Password row */
 .pwd-row { display: flex; gap: 0.4rem; align-items: center; }

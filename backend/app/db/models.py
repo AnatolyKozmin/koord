@@ -24,6 +24,24 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    reviewer_faculties: Mapped[list["UserReviewerFaculty"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="UserReviewerFaculty.faculty",
+    )
+
+
+class UserReviewerFaculty(Base):
+    """Факультеты кандидатов, которые координатор может проверять (лист «Анкеты»)."""
+
+    __tablename__ = "user_reviewer_faculties"
+    __table_args__ = (UniqueConstraint("user_id", "faculty", name="uq_user_reviewer_faculty"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    faculty: Mapped[str] = mapped_column(String(64))
+
+    user: Mapped["User"] = relationship(back_populates="reviewer_faculties")
 
 
 class Assignment(Base):

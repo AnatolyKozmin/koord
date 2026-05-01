@@ -116,20 +116,31 @@ export const api = {
       error?: string | null;
     }>(`/api/sheets/queue/status/${encodeURIComponent(jobId)}`),
   adminUsers: () =>
-    request<{ email: string; role: string; master_label: string | null; faculty: string | null }[]>("/api/admin/users"),
+    request<
+      {
+        email: string;
+        role: string;
+        master_label: string | null;
+        faculty: string | null;
+        reviewer_faculties: string[];
+      }[]
+    >("/api/admin/users"),
   adminCreateUser: (
     email: string,
     password: string,
     role: "user" | "super_admin" = "user",
     faculty?: string | null,
   ) =>
-    request<{ email: string; role: string; master_label: string | null; faculty: string | null }>(
-      "/api/admin/users",
-      {
-        method: "POST",
-        json: { email, password, role, faculty: faculty ?? null },
-      },
-    ),
+    request<{
+      email: string;
+      role: string;
+      master_label: string | null;
+      faculty: string | null;
+      reviewer_faculties: string[];
+    }>("/api/admin/users", {
+      method: "POST",
+      json: { email, password, role, faculty: faculty ?? null },
+    }),
   adminAssignments: () => request<Record<string, Record<string, number[]>>>("/api/admin/assignments"),
   adminDistribute: (sheet_name: string, per_user: number, user_emails: string[], by_columns?: boolean) =>
     request<{ ok: boolean; assigned_rows: Record<string, number[]> }>("/api/admin/assignments/distribute", {
@@ -140,6 +151,15 @@ export const api = {
     request<{ ok: boolean; assigned_rows: Record<string, number[]> }>("/api/admin/assignments/distribute-custom", {
       method: "POST",
       json: { sheet_name, user_counts, by_columns: !!by_columns },
+    }),
+  adminDistributeBalanced: (sheet_name: string, user_emails: string[]) =>
+    request<{
+      ok: boolean;
+      assigned: Record<string, number[]>;
+      unassigned: number[];
+    }>("/api/admin/assignments/distribute-balanced", {
+      method: "POST",
+      json: { sheet_name, user_emails },
     }),
   adminSheetRows: (sheet_name: string) =>
     request<{
@@ -156,6 +176,11 @@ export const api = {
     request<{ ok: boolean; email: string; faculty: string | null }>(
       `/api/admin/users/${encodeURIComponent(email)}/faculty`,
       { method: "PATCH", json: { faculty } },
+    ),
+  adminPatchReviewerFaculties: (email: string, faculties: string[]) =>
+    request<{ ok: boolean; email: string; reviewer_faculties: string[] }>(
+      `/api/admin/users/${encodeURIComponent(email)}/reviewer-faculties`,
+      { method: "PATCH", json: { faculties } },
     ),
   adminSetPassword: (email: string, password: string) =>
     request<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(email)}/password`, {

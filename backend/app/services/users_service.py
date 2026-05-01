@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Literal
 
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.orm import selectinload
 
-from app.db.models import User
+from app.constants.faculties import REVIEWER_FACULTIES
+from app.db.models import User, UserReviewerFaculty
 from app.db.session import SessionLocal
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -50,7 +52,7 @@ def create_user(email: str, password: str, role: Role, faculty: str | None = Non
 def get_user(email: str) -> dict | None:
     em = email.lower()
     with SessionLocal() as session:
-        u = session.scalars(select(User).where(User.email == em)).first()
+        u = session.scalars(select(User).options(selectinload(User.reviewer_faculties)).where(User.email == em)).first()
         if not u:
             return None
         return {
@@ -59,6 +61,7 @@ def get_user(email: str) -> dict | None:
             "role": u.role,
             "master_label": u.master_label,
             "faculty": u.faculty,
+            "reviewer_faculties": sorted({rf.faculty for rf in u.reviewer_faculties}),
         }
 
 
@@ -93,12 +96,46 @@ def set_user_faculty(email: str, faculty: str | None) -> bool:
     return True
 
 
+def set_user_reviewer_faculties(email: str, faculties: list[str]) -> bool:
+    seen: set[str] = set()
+    canon: list[str] = []
+    for raw in faculties:
+        s = str(raw).strip()
+        if not s or s in seen:
+            continue
+        if s not in REVIEWER_FACULTIES:
+            raise ValueError(f"Неизвестный факультет: {s}")
+        seen.add(s)
+        canon.append(s)
+    canon.sort()
+
+    em = email.lower()
+    with SessionLocal() as session:
+        u = session.scalars(select(User).where(User.email == em)).first()
+        if not u:
+            return False
+        session.execute(delete(UserReviewerFaculty).where(UserReviewerFaculty.user_id == u.id))
+        for f in canon:
+            session.add(UserReviewerFaculty(user_id=u.id, faculty=f))
+        session.commit()
+    return True
+
+
 def list_users() -> list[dict]:
     with SessionLocal() as session:
         rows = session.scalars(
-            select(User).order_by(User.faculty.asc().nulls_last(), User.master_label.asc(), User.email.asc()),
+            select(User)
+            .options(selectinload(User.reviewer_faculties))
+            .order_by(User.faculty.asc().nulls_last(), User.master_label.asc(), User.email.asc()),
         ).all()
         return [
-            {"email": u.email, "role": u.role, "master_label": u.master_label, "faculty": u.faculty} for u in rows
+            {
+                "email": u.email,
+                "role": u.role,
+                "master_label": u.master_label,
+                "faculty": u.faculty,
+                "reviewer_faculties": sorted({rf.faculty for rf in u.reviewer_faculties}),
+            }
+            for u in rows
         ]
 

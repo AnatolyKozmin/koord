@@ -164,6 +164,106 @@ def distribute_sheet_custom(
     return result
 
 
+def distribute_anketa_balanced_by_faculty(
+    sheet_name: str,
+    user_emails: list[str],
+) -> dict[str, object]:
+    """Распределяет строки листа «Анкеты» поровну между выбранными проверяющими.
+
+    У каждого проверяющего в профиле задан список факультетов кандидатов (`reviewer_faculties`);
+    строка попадает только к тем, у кого в этом списке есть факультет из ячейки «Укажи свой факультет».
+
+    Если список пуст — координатор не участвует в автораспределении.
+    Пустая или неразпознанная ячейка факультета — строка в `unassigned`.
+
+    Перед назначением снимаются все текущие назначения строк этого листа (у всех пользователей).
+    Возвращает {"assigned": {email: [row_indices]}, "unassigned": [row_indices]}.
+    """
+    from random import Random
+
+    from app.constants.faculties import canonical_reviewer_faculty
+    from app.constants.ankety import find_col
+    from app.db.models import UserReviewerFaculty
+    from app.services import sheets_service
+
+    settings = get_settings()
+    if sheet_name != settings.sheet_name_ankety:
+        raise ValueError("Балансировка по факультетам доступна только для листа «Анкеты»")
+
+    rows = sheets_service.read_sheet_cached(sheet_name)
+    if not rows:
+        raise ValueError("Нет данных в кэше — выполните синхронизацию таблицы")
+    if not user_emails:
+        raise ValueError("Список проверяющих пуст")
+
+    header = rows[0] if rows else []
+    fac_col = find_col(header, "Укажи свой факультет")
+    if fac_col is None:
+        raise ValueError("В листе не найдена колонка «Укажи свой факультет»")
+
+    axis = _axis_for_sheet(sheet_name)
+    with SessionLocal() as session:
+        session.execute(delete(Assignment).where(Assignment.sheet_name == sheet_name, Assignment.axis == axis))
+        session.commit()
+
+    norm_emails = [e.lower() for e in user_emails]
+    with SessionLocal() as session:
+        id_email = dict(session.execute(select(User.id, User.email).where(User.email.in_(norm_emails))).all())
+    ids = list(id_email.keys())
+    allowed_by_email: dict[str, set[str]] = {em: set() for em in norm_emails}
+    if ids:
+        with SessionLocal() as session:
+            pairs = session.execute(
+                select(UserReviewerFaculty.user_id, UserReviewerFaculty.faculty).where(
+                    UserReviewerFaculty.user_id.in_(ids),
+                ),
+            ).all()
+        for uid, fac in pairs:
+            em = id_email.get(uid)
+            if em is not None:
+                allowed_by_email[em].add(fac)
+
+    rng = Random()
+    data_indices = list(range(1, len(rows)))
+    rng.shuffle(data_indices)
+
+    load = {em: 0 for em in norm_emails}
+    assigned: dict[str, list[int]] = {em: [] for em in norm_emails}
+    unassigned: list[int] = []
+
+    for idx in data_indices:
+        row = rows[idx]
+        cand_raw = row[fac_col] if fac_col < len(row) else ""
+        cand_fac = canonical_reviewer_faculty(cand_raw)
+
+        if cand_fac is None:
+            unassigned.append(idx)
+            continue
+
+        eligible: list[str] = []
+        for em in norm_emails:
+            if cand_fac in allowed_by_email.get(em, set()):
+                eligible.append(em)
+
+        if not eligible:
+            unassigned.append(idx)
+            continue
+
+        min_load = min(load[e] for e in eligible)
+        pool = [e for e in eligible if load[e] == min_load]
+        chosen = rng.choice(pool)
+        assigned[chosen].append(idx)
+        load[chosen] += 1
+
+    for em in norm_emails:
+        merge_sheet_rows(em, sheet_name, sorted(assigned[em]))
+
+    return {
+        "assigned": {em: sorted(idxs) for em, idxs in assigned.items()},
+        "unassigned": sorted(unassigned),
+    }
+
+
 def distribute_sheet(
     sheet_name: str,
     per_user: int,

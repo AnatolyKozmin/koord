@@ -35,6 +35,20 @@ def test_faculty_via_admin_api(client, admin_headers):
     assert users_service.get_user("coord@test.local")["faculty"] is None
 
 
+def test_reviewer_faculties_via_admin_api(client, admin_headers):
+    users_service.create_user("rev@test.local", "RevPw123456789", "user")
+    r = client.patch(
+        "/api/admin/users/rev@test.local/reviewer-faculties",
+        json={"faculties": ["ФЭБ", "НАБ"]},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["reviewer_faculties"] == ["НАБ", "ФЭБ"]
+    me = users_service.get_user("rev@test.local")
+    assert set(me["reviewer_faculties"]) == {"НАБ", "ФЭБ"}
+
+
 def test_faculty_unknown_rejected(client, admin_headers):
     users_service.create_user("x@test.local", "XPw098765439", "user")
     r = client.patch(
