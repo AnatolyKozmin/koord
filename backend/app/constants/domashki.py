@@ -28,6 +28,9 @@ HEADER_REVIEWER_QUESTIONS = "Вопросы по ИДЗ (если вопросо
 
 HEADER_REVIEWER_COMMENT = "Комментарий по ИДЗ"
 
+# Поле студенческого билета — по нему ищем факультет в листе «Анкеты»
+DOMASHKI_STUDENT_ID_HEADER = "Номер студенческого билета"
+
 
 def _norm(s: str) -> str:
     return " ".join(s.replace("\r", "").split()).strip().lower()
@@ -50,6 +53,27 @@ class DomashkiColumnMap:
     level_col: int | None
     reviewer_questions_col: int | None
     reviewer_comment_col: int | None
+
+
+def find_header_row(all_rows: list[list[Any]]) -> list[Any]:
+    """Возвращает строку заголовков из листа Домашка.
+
+    Лист может иметь двойную шапку (строка 1 — объединённый заголовок-заглушка,
+    строка 2 — реальные названия колонок). Проверяем обе строки: берём ту,
+    в которой находится хотя бы один из ожидаемых заголовков баллов.
+    """
+    for row in all_rows[:3]:
+        if any(find_col(row, h) is not None for h in DOMASHKI_SCORE_HEADERS):
+            return row
+    return all_rows[0] if all_rows else []
+
+
+def data_start_index(all_rows: list[list[Any]]) -> int:
+    """Индекс первой строки данных (после всех строк заголовков)."""
+    for i, row in enumerate(all_rows[:3]):
+        if any(find_col(row, h) is not None for h in DOMASHKI_SCORE_HEADERS):
+            return i + 1
+    return 1
 
 
 def map_headers(header_row: list[Any]) -> DomashkiColumnMap:

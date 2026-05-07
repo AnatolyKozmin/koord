@@ -9,6 +9,7 @@ from app.db.bootstrap import (
     cleanup_generic_masters_sql,
     init_db,
     migrate_from_redis_if_empty,
+    migrate_schema_add_reviewer_faculties_table,
     migrate_schema_add_user_faculty,
     seed_master_users_sql,
     seed_reviewer_users_sql,
@@ -24,6 +25,7 @@ log = logging.getLogger("uvicorn.error")
 async def lifespan(app: FastAPI):
     init_db()
     migrate_schema_add_user_faculty()
+    migrate_schema_add_reviewer_faculties_table()
     migrate_from_redis_if_empty()
     seed_superadmin_sql()
     seed_master_users_sql()

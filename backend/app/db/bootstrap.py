@@ -91,6 +91,24 @@ def migrate_from_redis_if_empty() -> dict[str, Any]:
     return out
 
 
+def migrate_schema_add_reviewer_faculties_table() -> None:
+    """Для существующих БД: создать таблицу user_reviewer_faculties если её нет."""
+    try:
+        insp = inspect(engine)
+        if "user_reviewer_faculties" not in insp.get_table_names():
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "CREATE TABLE user_reviewer_faculties ("
+                    "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    "  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+                    "  faculty VARCHAR(64) NOT NULL,"
+                    "  UNIQUE (user_id, faculty)"
+                    ")"
+                ))
+    except Exception:
+        pass
+
+
 def seed_superadmin_sql() -> bool:
     settings = get_settings()
     if not settings.superadmin_email or not settings.superadmin_password:

@@ -188,6 +188,26 @@ def admin_distribute_balanced(
     return {"ok": True, **result}
 
 
+@router.post("/assignments/distribute-domashki")
+def admin_distribute_domashki(
+    body: DistributeBalancedRequest,
+    _: dict = Depends(require_super_admin),
+) -> dict[str, Any]:
+    """Инкрементальное распределение домашек с балансировкой по факультетам через студ. билет."""
+    known = {u["email"].lower() for u in users_service.list_users()}
+    for e in body.user_emails:
+        if str(e).lower() not in known:
+            raise HTTPException(status_code=400, detail=f"Неизвестный пользователь: {e}")
+    try:
+        result = assignments_service.distribute_domashki_balanced_by_faculty(
+            body.sheet_name.strip(),
+            [str(e) for e in body.user_emails],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, **result}
+
+
 @router.post("/assignments/distribute-custom")
 def admin_distribute_custom(
     body: DistributeCustomRequest,

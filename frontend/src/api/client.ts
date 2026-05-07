@@ -89,6 +89,23 @@ export const api = {
         domashki: { total: number; reviewed: number; pending: number };
         interviews: { total: number; conducted: number; pending: number };
       }[];
+      sheets_summary?: {
+        ankety: {
+          sheet: string;
+          total_rows: number;
+          assigned: number;
+          unassigned_count: number;
+          unassigned_indices: number[];
+        };
+        domashki: {
+          sheet: string;
+          total_rows: number;
+          assigned: number;
+          unassigned_count: number;
+          unassigned_indices: number[];
+          no_student_id_match: number;
+        };
+      };
       cache_loaded: boolean;
       note: string | null;
     }>("/api/stats/master-dashboard"),
@@ -158,6 +175,16 @@ export const api = {
       assigned: Record<string, number[]>;
       unassigned: number[];
     }>("/api/admin/assignments/distribute-balanced", {
+      method: "POST",
+      json: { sheet_name, user_emails },
+    }),
+  adminDistributeDomashki: (sheet_name: string, user_emails: string[]) =>
+    request<{
+      ok: boolean;
+      newly_assigned: Record<string, number[]>;
+      unassigned: number[];
+      already_assigned: number;
+    }>("/api/admin/assignments/distribute-domashki", {
       method: "POST",
       json: { sheet_name, user_emails },
     }),

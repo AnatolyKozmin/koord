@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.deps import get_current_user
 from app.config import get_settings
-from app.constants.domashki import map_headers
+from app.constants.domashki import data_start_index, find_header_row, map_headers
 from app.services import sheets_service
 
 router = APIRouter(prefix="/domashki", tags=["domashki"])
@@ -15,12 +15,14 @@ def column_layout(user: dict = Depends(get_current_user)) -> dict:
     _ = user
     sheet = get_settings().sheet_name_domashki
     rows = sheets_service.read_sheet_cached(sheet)
-    if not rows or not rows[0]:
+    if not rows:
         raise HTTPException(
             status_code=404,
             detail=f"Нет данных листа «{sheet}» в кэше — выполните синхронизацию на дашборде.",
         )
-    header = rows[0]
+    header = find_header_row(rows)
+    if not header:
+        raise HTTPException(status_code=404, detail=f"Не найдена строка заголовков в листе «{sheet}».")
     m = map_headers(header)
 
     def cell_title(idx: int | None) -> str | None:

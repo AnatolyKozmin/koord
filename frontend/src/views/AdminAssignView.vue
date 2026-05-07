@@ -27,11 +27,30 @@ type MasterStat = {
   interviews: { total: number; conducted: number; pending: number };
 };
 
+type SheetsSummary = {
+  ankety: {
+    sheet: string;
+    total_rows: number;
+    assigned: number;
+    unassigned_count: number;
+    unassigned_indices: number[];
+  };
+  domashki: {
+    sheet: string;
+    total_rows: number;
+    assigned: number;
+    unassigned_count: number;
+    unassigned_indices: number[];
+    no_student_id_match: number;
+  };
+};
+
 const tab = ref<"users" | "assign" | "rows" | "stats">("stats");
 
 const users = ref<Reviewer[]>([]);
 const assignments = ref<Record<string, Record<string, number[]>>>({});
 const stats = ref<MasterStat[]>([]);
+const sheetsSummary = ref<SheetsSummary | null>(null);
 const cacheLoaded = ref(false);
 
 const tabNames = ref<{
@@ -66,6 +85,8 @@ const distMsg = ref("");
 const distErr = ref("");
 const distBalancedMsg = ref("");
 const distBalancedErr = ref("");
+const distDomashkiMsg = ref("");
+const distDomashkiErr = ref("");
 
 /* ── Вкладка «По строкам» ── */
 const rowsSheet = ref("");
@@ -137,7 +158,7 @@ async function refresh() {
       api.adminUsers(),
       api.adminAssignments(),
       api.sheetTabNames(),
-      api.masterDashboard().catch(() => ({ masters: [], cache_loaded: false, note: null })),
+      api.masterDashboard().catch(() => ({ masters: [], sheets_summary: undefined, cache_loaded: false, note: null })),
     ]);
     users.value = u.map((row) => ({
       email: row.email,
@@ -148,6 +169,7 @@ async function refresh() {
     assignments.value = a;
     tabNames.value = n;
     stats.value = s.masters;
+    sheetsSummary.value = s.sheets_summary ?? null;
     cacheLoaded.value = s.cache_loaded;
     if (!sheetForDist.value && n.ankety) sheetForDist.value = n.ankety;
     if (!rowsSheet.value && n.ankety) rowsSheet.value = n.ankety;
@@ -231,6 +253,30 @@ async function distributeBalancedFaculty() {
     await refresh();
   } catch (e) {
     distBalancedErr.value = e instanceof Error ? e.message : "Ошибка";
+  }
+}
+
+async function distributeBalancedDomashki() {
+  distDomashkiMsg.value = "";
+  distDomashkiErr.value = "";
+  if (!tabNames.value) {
+    distDomashkiErr.value = "Названия листов не загружены";
+    return;
+  }
+  if (!selectedEmails.value.length) {
+    distDomashkiErr.value = "Выберите хотя бы одного проверяющего";
+    return;
+  }
+  try {
+    const res = await api.adminDistributeDomashki(tabNames.value.domashki, selectedEmails.value);
+    const newCount = Object.values(res.newly_assigned ?? {}).reduce((s, a) => s + a.length, 0);
+    const un = res.unassigned?.length > 0
+      ? ` Без факультета / без допуска: ${res.unassigned.length} стр.`
+      : "";
+    distDomashkiMsg.value = `Готово. Новых: ${newCount}, уже было: ${res.already_assigned}.${un}`;
+    await refresh();
+  } catch (e) {
+    distDomashkiErr.value = e instanceof Error ? e.message : "Ошибка";
   }
 }
 
@@ -389,6 +435,116 @@ function pct(done: number, total: number) {
           <div class="summary-val">{{ totalInterviews('total') }}</div>
           <div class="summary-lbl">Собеседований</div>
         </div>
+      </div>
+
+      <!-- Сводка по листам: распределённые / потерянные строки -->
+      <div v-if="sheetsSummary" class="card" style="margin-bottom: 1rem;">
+        <h3 style="margin-top: 0">Сводка по листам</h3>
+        <div class="sheets-grid">
+          <div class="sheet-summary">
+            <div class="sheet-summary__title">Анкеты</div>
+            <div class="sheet-summary__row">
+              <span class="muted">Всего строк</span>
+              <strong>{{ sheetsSummary.ankety.total_rows }}</strong>
+            </div>
+            <div class="sheet-summary__row">
+              <span class="muted">Назначено</span>
+              <strong>{{ sheetsSummary.ankety.assigned }}</strong>
+            </div>
+            <div class="sheet-summary__row" :class="{ 'lost-warn': sheetsSummary.ankety.unassigned_count > 0 }">
+              <span>⚠ Потеряно (никому не назначено)</span>
+              <strong>{{ sheetsSummary.ankety.unassigned_count }}</strong>
+            </div>
+            <details v-if="sheetsSummary.ankety.unassigned_count > 0" class="lost-details">
+              <summary>Показать строки</summary>
+              <div class="lost-indices">
+                стр.: {{ sheetsSummary.ankety.unassigned_indices.join(", ") }}
+                <span v-if="sheetsSummary.ankety.unassigned_count > sheetsSummary.ankety.unassigned_indices.length" class="muted">
+                  … и ещё {{ sheetsSummary.ankety.unassigned_count - sheetsSummary.ankety.unassigned_indices.length }}
+                </span>
+              </div>
+            </details>
+          </div>
+
+          <div class="sheet-summary">
+            <div class="sheet-summary__title">Домашки</div>
+            <div class="sheet-summary__row">
+              <span class="muted">Всего строк</span>
+              <strong>{{ sheetsSummary.domashki.total_rows }}</strong>
+            </div>
+            <div class="sheet-summary__row">
+              <span class="muted">Назначено</span>
+              <strong>{{ sheetsSummary.domashki.assigned }}</strong>
+            </div>
+            <div class="sheet-summary__row" :class="{ 'lost-warn': sheetsSummary.domashki.unassigned_count > 0 }">
+              <span>⚠ Потеряно (никому не назначено)</span>
+              <strong>{{ sheetsSummary.domashki.unassigned_count }}</strong>
+            </div>
+            <div v-if="sheetsSummary.domashki.no_student_id_match > 0" class="sheet-summary__row sub-warn">
+              <span>↳ Из них без матча по студ. билету</span>
+              <strong>{{ sheetsSummary.domashki.no_student_id_match }}</strong>
+            </div>
+            <details v-if="sheetsSummary.domashki.unassigned_count > 0" class="lost-details">
+              <summary>Показать строки</summary>
+              <div class="lost-indices">
+                стр.: {{ sheetsSummary.domashki.unassigned_indices.join(", ") }}
+                <span v-if="sheetsSummary.domashki.unassigned_count > sheetsSummary.domashki.unassigned_indices.length" class="muted">
+                  … и ещё {{ sheetsSummary.domashki.unassigned_count - sheetsSummary.domashki.unassigned_indices.length }}
+                </span>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+
+      <!-- Сводка домашек по проверяющим (компактная таблица) -->
+      <div v-if="stats.length" class="card" style="margin-bottom: 1rem;">
+        <h3 style="margin-top: 0">Домашки по проверяющим</h3>
+        <table class="domashki-table">
+          <thead>
+            <tr>
+              <th>Проверяющий</th>
+              <th>Назначено</th>
+              <th>Проверено</th>
+              <th>Осталось</th>
+              <th>Прогресс</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="m in stats" :key="m.email">
+              <td>
+                <div class="reviewer-name">{{ m.label }}</div>
+                <div class="reviewer-email">{{ m.email }}</div>
+              </td>
+              <td class="num-cell">{{ m.domashki.total }}</td>
+              <td class="num-cell">
+                <span :class="m.domashki.pending === 0 && m.domashki.total > 0 ? 'done' : ''">
+                  {{ m.domashki.reviewed }}
+                </span>
+              </td>
+              <td class="num-cell">
+                <span :class="m.domashki.pending > 0 ? 'pending-mark' : ''">{{ m.domashki.pending }}</span>
+              </td>
+              <td class="num-cell">
+                <div class="progress-wrap">
+                  <div class="progress-bar">
+                    <div class="progress-fill" :style="{ width: pct(m.domashki.reviewed, m.domashki.total) + '%' }"></div>
+                  </div>
+                  <span class="progress-pct">{{ m.domashki.total ? pct(m.domashki.reviewed, m.domashki.total) + '%' : '—' }}</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td><strong>Итого</strong></td>
+              <td class="num-cell"><strong>{{ totalStat('domashki', 'total') }}</strong></td>
+              <td class="num-cell"><strong>{{ totalStat('domashki', 'reviewed') }}</strong></td>
+              <td class="num-cell"><strong>{{ totalStat('domashki', 'pending') }}</strong></td>
+              <td class="num-cell"><strong>{{ pct(totalStat('domashki', 'reviewed'), totalStat('domashki', 'total')) }}%</strong></td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
 
       <!-- Таблица по проверяющим -->
@@ -600,6 +756,24 @@ function pct(done: number, total: number) {
             <span v-if="distBalancedMsg" class="ok-msg">{{ distBalancedMsg }}</span>
             <span v-if="distBalancedErr" class="err-msg">{{ distBalancedErr }}</span>
           </div>
+        </div>
+      </div>
+
+      <!-- Распределение домашек -->
+      <div class="card" style="margin-top: 1rem">
+        <h3>Домашки — инкрементальное распределение по факультетам</h3>
+        <p class="muted">
+          Студенческий билет из листа «Домашки» сопоставляется с листом «Анкеты», чтобы определить факультет кандидата.
+          Строка выдаётся только проверяющим, у которых этот факультет есть в списке допусков.
+          Уже назначенные строки <strong>не трогаются</strong> — добавляются только новые.
+        </p>
+        <p class="muted" style="margin-bottom: 0.5rem">Выберите проверяющих выше (используется тот же выбор).</p>
+        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" type="button" @click="distributeBalancedDomashki">
+            Раздать домашки с учётом допусков
+          </button>
+          <span v-if="distDomashkiMsg" class="ok-msg">{{ distDomashkiMsg }}</span>
+          <span v-if="distDomashkiErr" class="err-msg">{{ distDomashkiErr }}</span>
         </div>
       </div>
 
@@ -1009,4 +1183,115 @@ function pct(done: number, total: number) {
 .warn-banner { background: rgba(251,191,36,0.12); border: 1px solid #fbbf24; color: #fbbf24; border-radius: 8px; padding: 0.6rem 0.9rem; margin-bottom: 1rem; font-size: 0.88rem; }
 .btn-danger { background: rgba(248,113,113,0.15); color: #f87171; border-color: rgba(248,113,113,0.3); }
 .btn-danger:hover { background: rgba(248,113,113,0.25); }
+
+/* Sheets summary */
+.sheets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+.sheet-summary {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  background: rgba(255,255,255,0.02);
+}
+.sheet-summary__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--c-purple-light, #c4b5fd);
+}
+.sheet-summary__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.88rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.06);
+}
+.sheet-summary__row:last-of-type { border-bottom: none; }
+.sheet-summary__row.lost-warn {
+  color: #f87171;
+}
+.sheet-summary__row.lost-warn strong { color: #f87171; }
+.sheet-summary__row.sub-warn {
+  color: #fbbf24;
+  font-size: 0.8rem;
+  padding-left: 0.5rem;
+}
+.sheet-summary__row.sub-warn strong { color: #fbbf24; }
+.lost-details {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+.lost-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  user-select: none;
+}
+.lost-details summary:hover { color: var(--text); }
+.lost-indices {
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  background: rgba(248,113,113,0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(248,113,113,0.15);
+  word-break: break-word;
+  line-height: 1.5;
+  font-family: monospace;
+  font-size: 0.78rem;
+}
+
+/* Domashki-by-reviewer compact table */
+.domashki-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin-top: 0.5rem;
+}
+.domashki-table th {
+  text-align: center;
+  padding: 0.55rem 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.domashki-table th:first-child { text-align: left; }
+.domashki-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  vertical-align: middle;
+}
+.domashki-table tfoot td {
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+}
+.pending-mark { color: #fbbf24; font-weight: 600; }
+.progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.progress-bar {
+  flex: 1;
+  max-width: 140px;
+  height: 6px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--c-purple, #9966ff), #4ade80);
+  transition: width 0.25s ease;
+}
+.progress-pct {
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 36px;
+  text-align: right;
+}
 </style>
