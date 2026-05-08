@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.auth.deps import get_current_user
 from app.config import get_settings
 from app.constants.domashki import data_start_index, find_header_row, map_headers
+from app.constants.score_matrix import allowed_scores_for_header
 from app.services import sheets_service
 
 router = APIRouter(prefix="/domashki", tags=["domashki"])
@@ -30,9 +31,18 @@ def column_layout(user: dict = Depends(get_current_user)) -> dict:
             return None
         return str(header[idx]) if header[idx] is not None else None
 
+    def score_col_payload(i: int) -> dict:
+        title = cell_title(i)
+        allowed = allowed_scores_for_header(title)
+        return {
+            "index": i,
+            "header": title,
+            "allowed_scores": list(allowed) if allowed is not None else None,
+        }
+
     return {
         "sheet": sheet,
-        "score_column_indices": [{"index": i, "header": cell_title(i)} for i in m.score_cols],
+        "score_column_indices": [score_col_payload(i) for i in m.score_cols],
         "sum_column": {"index": m.sum_col, "header": cell_title(m.sum_col)},
         "level_column": {"index": m.level_col, "header": cell_title(m.level_col)},
         "reviewer_questions_column": {

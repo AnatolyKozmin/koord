@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     superadmin_email: str | None = Field(default=None, validation_alias="SUPERADMIN_EMAIL")
     superadmin_password: str | None = Field(default=None, validation_alias="SUPERADMIN_PASSWORD")
 
+    # Автоматический фоновый sync листов + инкрементальное распределение анкет/домашек.
+    # 0 — отключено. Иначе — интервал в секундах между прогонами (рекомендую 300 = 5 минут).
+    auto_sync_interval_sec: int = Field(default=0, ge=0, validation_alias="AUTO_SYNC_INTERVAL_SEC")
+    # Авто-распределение работает поверх всех проверяющих с непустым reviewer_faculties
+    # (тех, у кого админ выставил допуски). Ничего не происходит, если их нет.
+
     # Автосоздание учёток мастеров отбора при старте (дашборд / назначения).
     master_count: int = Field(default=20, ge=0, le=500, validation_alias="MASTER_COUNT")
     master_seed_domain: str = Field(default="koord.local", validation_alias="MASTER_SEED_DOMAIN")

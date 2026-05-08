@@ -178,6 +178,16 @@ export const api = {
       method: "POST",
       json: { sheet_name, user_emails },
     }),
+  adminDistributeAnketyIncremental: (sheet_name: string, user_emails: string[]) =>
+    request<{
+      ok: boolean;
+      newly_assigned: Record<string, number[]>;
+      unassigned: number[];
+      already_assigned: number;
+    }>("/api/admin/assignments/distribute-ankety-incremental", {
+      method: "POST",
+      json: { sheet_name, user_emails },
+    }),
   adminDistributeDomashki: (sheet_name: string, user_emails: string[]) =>
     request<{
       ok: boolean;
@@ -233,7 +243,11 @@ export const api = {
   domashkiColumnLayout: () =>
     request<{
       sheet: string;
-      score_column_indices: { index: number; header: string | null }[];
+      score_column_indices: {
+        index: number;
+        header: string | null;
+        allowed_scores: number[] | null;
+      }[];
       sum_column: { index: number | null; header: string | null };
       level_column: { index: number | null; header: string | null };
       reviewer_questions_column: { index: number | null; header: string | null };

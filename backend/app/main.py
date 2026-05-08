@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 import logging
 
@@ -16,6 +17,7 @@ from app.db.bootstrap import (
     seed_superadmin_sql,
 )
 from app.routers import admin, ankety, auth, domashki, interviews, sheets, stats
+from app.services.auto_sync import auto_sync_loop
 
 
 log = logging.getLogger("uvicorn.error")
@@ -41,7 +43,22 @@ async def lifespan(app: FastAPI):
         bool(s.master_seed_password),
         rv.get("note", ""),
     )
-    yield
+
+    sync_task: asyncio.Task | None = None
+    if s.auto_sync_interval_sec and s.auto_sync_interval_sec > 0:
+        sync_task = asyncio.create_task(auto_sync_loop(s.auto_sync_interval_sec))
+    else:
+        log.info("auto_sync: disabled (set AUTO_SYNC_INTERVAL_SEC=300 to enable)")
+
+    try:
+        yield
+    finally:
+        if sync_task is not None:
+            sync_task.cancel()
+            try:
+                await sync_task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="Koord Verification API", lifespan=lifespan)

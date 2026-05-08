@@ -315,6 +315,95 @@ def distribute_sheet_custom(
     return result
 
 
+def distribute_anketa_balanced_by_faculty_incremental(
+    sheet_name: str,
+    user_emails: list[str],
+) -> dict[str, object]:
+    """Инкрементально раздаёт только НОВЫЕ строки «Анкеты» — никого не сбрасывает.
+
+    Работает поверх whitelist логики (reviewer_faculties). Балансировка нагрузки идёт
+    с учётом уже существующих назначений, чтобы новые добирались к менее загруженным.
+    """
+    from random import Random
+
+    from app.constants.ankety import find_col
+    from app.constants.faculties import canonical_reviewer_faculty
+    from app.db.models import UserReviewerFaculty
+    from app.services import sheets_service
+
+    settings = get_settings()
+    if sheet_name != settings.sheet_name_ankety:
+        raise ValueError("Балансировка по факультетам доступна только для листа «Анкеты»")
+
+    rows = sheets_service.read_sheet_cached(sheet_name)
+    if not rows:
+        raise ValueError("Нет данных в кэше — выполните синхронизацию таблицы")
+    if not user_emails:
+        raise ValueError("Список проверяющих пуст")
+
+    header = rows[0] if rows else []
+    fac_col = find_col(header, "Укажи свой факультет")
+    if fac_col is None:
+        raise ValueError("В листе не найдена колонка «Укажи свой факультет»")
+
+    existing_assignments = row_to_reviewer_map(sheet_name)
+    already_assigned_count = len(existing_assignments)
+
+    unprocessed_indices = [i for i in range(1, len(rows)) if i not in existing_assignments]
+
+    norm_emails = [e.lower() for e in user_emails]
+    with SessionLocal() as session:
+        id_email = dict(session.execute(select(User.id, User.email).where(User.email.in_(norm_emails))).all())
+    ids = list(id_email.keys())
+    allowed_by_email: dict[str, set[str]] = {em: set() for em in norm_emails}
+    if ids:
+        with SessionLocal() as session:
+            pairs = session.execute(
+                select(UserReviewerFaculty.user_id, UserReviewerFaculty.faculty).where(
+                    UserReviewerFaculty.user_id.in_(ids),
+                ),
+            ).all()
+        for uid, fac in pairs:
+            em = id_email.get(uid)
+            if em is not None:
+                allowed_by_email[em].add(fac)
+
+    load: dict[str, int] = {em: len(get_assignment(em).get(sheet_name, [])) for em in norm_emails}
+
+    rng = Random()
+    rng.shuffle(unprocessed_indices)
+
+    newly_assigned: dict[str, list[int]] = {em: [] for em in norm_emails}
+    unassigned: list[int] = []
+
+    for idx in unprocessed_indices:
+        row = rows[idx]
+        cand_raw = row[fac_col] if fac_col < len(row) else ""
+        cand_fac = canonical_reviewer_faculty(cand_raw)
+        if cand_fac is None:
+            unassigned.append(idx)
+            continue
+        eligible = [em for em in norm_emails if cand_fac in allowed_by_email.get(em, set())]
+        if not eligible:
+            unassigned.append(idx)
+            continue
+        min_load = min(load[e] for e in eligible)
+        pool = [e for e in eligible if load[e] == min_load]
+        chosen = rng.choice(pool)
+        newly_assigned[chosen].append(idx)
+        load[chosen] += 1
+
+    for em in norm_emails:
+        if newly_assigned[em]:
+            add_sheet_rows(em, sheet_name, sorted(newly_assigned[em]))
+
+    return {
+        "newly_assigned": {em: sorted(idxs) for em, idxs in newly_assigned.items()},
+        "unassigned": sorted(unassigned),
+        "already_assigned": already_assigned_count,
+    }
+
+
 def distribute_anketa_balanced_by_faculty(
     sheet_name: str,
     user_emails: list[str],

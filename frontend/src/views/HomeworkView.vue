@@ -15,7 +15,11 @@ const saveMsg = ref("");
 const saving = ref(false);
 
 const layout = ref<{
-  score_column_indices: { index: number; header: string | null }[];
+  score_column_indices: {
+    index: number;
+    header: string | null;
+    allowed_scores: number[] | null;
+  }[];
   sum_column: { index: number | null; header: string | null };
   level_column: { index: number | null; header: string | null };
   reviewer_questions_column: { index: number | null; header: string | null };
@@ -191,10 +195,33 @@ onMounted(load);
           <section v-if="layout?.score_column_indices?.length" class="hw-scores">
             <h4>Баллы</h4>
             <div class="hw-scores__grid">
-              <label v-for="(sc, sk) in layout.score_column_indices" :key="sk" class="score-field">
+              <div v-for="(sc, sk) in layout.score_column_indices" :key="sk" class="score-field">
                 <span class="score-field__label">{{ sc.header?.replace(/\n/g, " ") || `Балл ${sk + 1}` }}</span>
-                <input v-model="rowScores[cardIndex][sk]" type="text" inputmode="decimal" class="score-field__input" />
-              </label>
+                <div v-if="sc.allowed_scores && sc.allowed_scores.length" class="score-buttons">
+                  <button
+                    v-for="opt in sc.allowed_scores"
+                    :key="opt"
+                    type="button"
+                    class="score-btn"
+                    :class="{ 'score-btn--active': String(rowScores[cardIndex][sk]) === String(opt) }"
+                    @click="rowScores[cardIndex][sk] = String(opt)"
+                  >{{ opt }}</button>
+                  <button
+                    v-if="rowScores[cardIndex][sk]"
+                    type="button"
+                    class="score-btn score-btn--clear"
+                    title="Очистить"
+                    @click="rowScores[cardIndex][sk] = ''"
+                  >×</button>
+                </div>
+                <input
+                  v-else
+                  v-model="rowScores[cardIndex][sk]"
+                  type="text"
+                  inputmode="decimal"
+                  class="score-field__input"
+                />
+              </div>
             </div>
             <div v-if="layout.sum_column.index != null || layout.level_column.index != null" class="hw-readonly muted">
               <span v-if="layout.sum_column.index != null"
@@ -378,6 +405,39 @@ onMounted(load);
   font: inherit;
   width: 100%;
 }
+.score-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.score-btn {
+  flex: 0 0 auto;
+  min-width: 32px;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #0f1219;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.05s;
+}
+.score-btn:hover { border-color: var(--c-purple, #9966ff); background: rgba(153, 102, 255, 0.08); }
+.score-btn:active { transform: scale(0.96); }
+.score-btn--active {
+  background: rgba(153, 102, 255, 0.22);
+  border-color: var(--c-purple, #9966ff);
+  color: var(--c-purple-light, #c4b5fd);
+  font-weight: 600;
+}
+.score-btn--clear {
+  min-width: 26px;
+  padding: 0.3rem 0.45rem;
+  color: var(--muted);
+  opacity: 0.7;
+}
+.score-btn--clear:hover { color: #f87171; border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.08); }
 .hw-readonly {
   margin-top: 0.5rem;
   font-size: 0.85rem;

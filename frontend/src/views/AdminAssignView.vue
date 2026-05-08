@@ -87,6 +87,8 @@ const distBalancedMsg = ref("");
 const distBalancedErr = ref("");
 const distDomashkiMsg = ref("");
 const distDomashkiErr = ref("");
+const distAnketyIncMsg = ref("");
+const distAnketyIncErr = ref("");
 
 /* ── Вкладка «По строкам» ── */
 const rowsSheet = ref("");
@@ -253,6 +255,30 @@ async function distributeBalancedFaculty() {
     await refresh();
   } catch (e) {
     distBalancedErr.value = e instanceof Error ? e.message : "Ошибка";
+  }
+}
+
+async function distributeAnketyIncremental() {
+  distAnketyIncMsg.value = "";
+  distAnketyIncErr.value = "";
+  if (!tabNames.value) {
+    distAnketyIncErr.value = "Названия листов не загружены";
+    return;
+  }
+  if (!selectedEmails.value.length) {
+    distAnketyIncErr.value = "Выберите хотя бы одного проверяющего";
+    return;
+  }
+  try {
+    const res = await api.adminDistributeAnketyIncremental(tabNames.value.ankety, selectedEmails.value);
+    const newCount = Object.values(res.newly_assigned ?? {}).reduce((s, a) => s + a.length, 0);
+    const un = res.unassigned?.length > 0
+      ? ` Без допуска / факультета: ${res.unassigned.length} стр.`
+      : "";
+    distAnketyIncMsg.value = `Готово. Новых: ${newCount}, уже было: ${res.already_assigned}.${un}`;
+    await refresh();
+  } catch (e) {
+    distAnketyIncErr.value = e instanceof Error ? e.message : "Ошибка";
   }
 }
 
@@ -750,8 +776,19 @@ function pct(done: number, total: number) {
             Затем все строки листа «Анкеты» снимутся с координаторов и будут заново разделены поровну только между теми, у кого в списке есть факультет из ячейки «Укажи свой факультет».
           </p>
           <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-            <button class="btn btn-primary" type="button" @click="distributeBalancedFaculty">
-              Раздать анкеты с учётом допусков
+            <button class="btn btn-primary" type="button" @click="distributeAnketyIncremental">
+              ➕ Добавить только новые анкеты
+            </button>
+            <span v-if="distAnketyIncMsg" class="ok-msg">{{ distAnketyIncMsg }}</span>
+            <span v-if="distAnketyIncErr" class="err-msg">{{ distAnketyIncErr }}</span>
+          </div>
+          <p class="muted" style="margin: 0.75rem 0 0.5rem; font-size: 0.82rem;">
+            <strong>⚠ Полное перераспределение</strong> — снимает все назначения и раздаёт заново.
+            Используйте, только если хотите начать с чистого листа:
+          </p>
+          <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <button class="btn btn-danger" type="button" @click="distributeBalancedFaculty">
+              ↻ Перераспределить всё заново
             </button>
             <span v-if="distBalancedMsg" class="ok-msg">{{ distBalancedMsg }}</span>
             <span v-if="distBalancedErr" class="err-msg">{{ distBalancedErr }}</span>
